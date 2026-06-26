@@ -55,6 +55,8 @@ jobs:
       - run: npm run smoke:webhooks
       # Exercises the asset pipeline: upload → store → fetch bytes → delete.
       - run: npm run smoke:assets
+      # Exercises the admin API: auth gating + human review approval over HTTP.
+      - run: npm run smoke:admin
 
   s3:
     name: assets on S3 (MinIO)

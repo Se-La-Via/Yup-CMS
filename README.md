@@ -127,7 +127,8 @@ src/
              · policy · backoff · read · auth · assets · storage
   mcp/       server.ts — 25 MCP tools (the write/control plane for agents)
   api/       server.ts — read-only HTTP API + asset serving (the public surface)
-  scripts/   setup · migrate · worker · seed · smoke-{webhooks,assets} · webhook-listener
+  admin/     server.ts + dashboard — human admin UI + admin API (oversight)
+  scripts/   setup · migrate · worker · seed · smoke-{webhooks,assets,admin} · webhook-listener
 drizzle/     SQL migrations (reproducible installs)
 Dockerfile · docker-compose.yml
 ```
@@ -289,6 +290,26 @@ requests / 60s**; tune with `CMS_RATE_LIMIT` and `CMS_RATE_WINDOW_MS`, or set
 header; `/health` is exempt. The limiter is per-process — front a multi-instance
 fleet with a shared store (e.g. Redis) if you need a global limit.
 
+## Admin dashboard (for humans)
+
+Agents work through MCP; people get a browser UI. Run `npm run admin` (default
+port 3001, or the `admin` service in docker-compose) and open it. The dashboard
+is a single dependency-free page where a human reviewer can:
+
+- see the **pending review queue** and **approve/reject** — the key
+  human-in-the-loop action behind the review gate;
+- browse content by type and **publish/unpublish/delete** entries;
+- inspect webhooks and their delivery log, and list assets.
+
+Every admin action requires an **`admin`-scoped API key** (mint one with the MCP
+tool `create_api_key`); the dashboard prompts for it and stores it locally. The
+admin server is a **separate process** from the public read API, so that surface
+stays strictly read-only — writes only ever happen through MCP or this
+authenticated admin API. Admin writes are attributed to a human principal, so
+they satisfy the review gate.
+
+## Media & assets
+
 Upload files through the MCP tool `upload_asset` — either inline base64 or by
 giving a `sourceUrl` for the server to fetch (handy when an agent generates an
 image elsewhere). Metadata (filename, MIME type, size, SHA-256) is stored in
@@ -326,8 +347,8 @@ Storage backends are configured with `CMS_STORAGE_BACKEND`:
 - ✅ Media / asset handling (upload + serve; pluggable storage).
 - ✅ S3-compatible storage backend (local + S3, both CI-tested).
 - ✅ Rate limiting on the read API (token bucket, per IP).
+- ✅ Admin dashboard for human oversight (review queue, publish, webhooks, assets).
 - GraphQL read layer alongside REST.
-- Admin GUI (secondary interface) over the same core.
 - Multi-tenant scoping; distributed (Redis-backed) rate limiting; unique fields.
 
 ## Contributing

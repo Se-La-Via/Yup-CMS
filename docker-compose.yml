@@ -58,6 +58,22 @@ services:
       - "${CMS_API_PORT:-3000}:${CMS_API_PORT:-3000}"
     restart: unless-stopped
 
+  # Human admin dashboard + admin API (requires an admin-scoped API key).
+  admin:
+    build: .
+    command: node dist/admin/server.js
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-yup}:${POSTGRES_PASSWORD:-yup}@db:5432/${POSTGRES_DB:-yup}
+      CMS_ADMIN_PORT: ${CMS_ADMIN_PORT:-3001}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${CMS_ADMIN_PORT:-3001}:${CMS_ADMIN_PORT:-3001}"
+    restart: unless-stopped
+
   # Delivers webhook events from the outbox with retries. Required for webhooks.
   worker:
     build: .
