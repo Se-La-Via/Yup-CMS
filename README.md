@@ -76,11 +76,19 @@ Point any MCP client (Claude Code, Claude Desktop, etc.) at the MCP server:
       "command": "npx",
       "args": ["tsx", "src/mcp/server.ts"],
       "cwd": "/path/to/Yup-CMS",
-      "env": { "DATABASE_URL": "postgres://yup:...@localhost:5432/yup" }
+      "env": {
+        "DATABASE_URL": "postgres://yup:...@localhost:5432/yup",
+        "CMS_PRINCIPAL_TYPE": "agent",
+        "CMS_PRINCIPAL_ID": "claude"
+      }
     }
   }
 }
 ```
+
+The `CMS_PRINCIPAL_*` values bind this connection's identity (see
+[Trust model](#trust-model)). An agent connection is held by the review gate; a
+human reviewer connects with `CMS_PRINCIPAL_TYPE=human`.
 
 Then ask: *"List the content types in Yup, create a blog post about X, and
 publish it."*
@@ -105,7 +113,7 @@ All configuration is environment variables (see [`.env.example`](.env.example)):
 | `POSTGRES_PORT` | `5432` | Host port Postgres is exposed on. |
 | `CMS_API_PORT` | `3000` | Read API port. |
 | `CMS_REQUIRE_API_KEY` | `false` | Require a key for **every** read (else only non-published). |
-| `CMS_DEFAULT_AUTHOR_TYPE` / `CMS_DEFAULT_AUTHOR_ID` | `agent` / `yup-agent` | Author recorded when a write doesn't specify one. |
+| `CMS_PRINCIPAL_TYPE` / `CMS_PRINCIPAL_ID` | `agent` / `yup-agent` | Trusted identity the MCP server writes as. Stamped on every change; **not** taken from request args (see Trust model). |
 
 ---
 
@@ -150,6 +158,22 @@ This is deliberately keyed on author attribution (`human` vs `agent`), so the sa
 mechanism that records *who* changed content also decides *who may ship it*. It
 emits `entry.review_requested`, `review.approved`, and `review.rejected` events,
 so an approval can itself kick off downstream automation.
+
+## Trust model
+
+Attribution is only meaningful if it can't be forged, so identity is bound to the
+**connection**, not to request arguments:
+
+- The MCP server runs with a fixed principal (`CMS_PRINCIPAL_TYPE` / `_ID`). Every
+  write it performs is stamped with that identity — tools have **no** `author`
+  argument to override it.
+- An **agent** principal is subject to the review gate and **cannot approve or
+  reject reviews**. A human reviewer therefore connects through a separate MCP
+  server configured with `CMS_PRINCIPAL_TYPE=human`.
+- The read API holds no write authority; it is guarded separately by API keys.
+
+The upshot: an agent cannot publish gated content, cannot clear its own review,
+and cannot write a change into the audit trail under someone else's name.
 
 ## Events & automation (n8n)
 

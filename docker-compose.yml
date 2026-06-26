@@ -42,8 +42,8 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-yup}:${POSTGRES_PASSWORD:-yup}@db:5432/${POSTGRES_DB:-yup}
       CMS_API_PORT: ${CMS_API_PORT:-3000}
       CMS_REQUIRE_API_KEY: ${CMS_REQUIRE_API_KEY:-false}
-      CMS_DEFAULT_AUTHOR_TYPE: ${CMS_DEFAULT_AUTHOR_TYPE:-agent}
-      CMS_DEFAULT_AUTHOR_ID: ${CMS_DEFAULT_AUTHOR_ID:-yup-agent}
+      # The read API never writes, so it needs no principal. The MCP server
+      # (run by your agent client) sets CMS_PRINCIPAL_TYPE/ID; see .env.example.
     depends_on:
       db:
         condition: service_healthy

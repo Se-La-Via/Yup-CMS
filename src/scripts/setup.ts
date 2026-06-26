@@ -74,12 +74,12 @@ async function main() {
     "localhost:5432",
   );
 
-  console.log("\nContent & API\n");
+  console.log("\nPrincipal (trusted identity this server writes as)\n");
   const authorType = await ask(
-    "  Default author type for writes (agent/human/system)",
+    "  Principal type (agent/human/system)",
     "agent",
   );
-  const authorId = await ask("  Default author id", "yup-agent");
+  const authorId = await ask("  Principal id", "yup-agent");
   const apiPort = await ask("  Read API port", "3000");
   const lockReads = await askYesNo(
     "  Require an API key for ALL reads (else only non-published)?",
@@ -99,9 +99,9 @@ POSTGRES_DB=${dbName}
 # Inside docker-compose the API container overrides this to point at host "db".
 DATABASE_URL=${hostUrl}
 
-# --- Content defaults (author attribution) ---
-CMS_DEFAULT_AUTHOR_TYPE=${authorType}
-CMS_DEFAULT_AUTHOR_ID=${authorId}
+# --- Principal (trusted identity for writes; not taken from request args) ---
+CMS_PRINCIPAL_TYPE=${authorType}
+CMS_PRINCIPAL_ID=${authorId}
 
 # --- Read API ---
 CMS_API_PORT=${apiPort}

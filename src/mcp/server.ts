@@ -46,14 +46,24 @@ const fieldDefSchema = z.object({
     .describe("for 'reference' fields: machine name of the referenced content type"),
 });
 
-const authorSchema = z
-  .object({
-    type: z.enum(["human", "agent", "system"]).optional(),
-    id: z.string().optional().describe("identity, e.g. an email or agent name"),
-    note: z.string().optional().describe("why this change was made"),
-  })
+// The trusted principal for this MCP connection. Identity is bound to the
+// deployment (env), NOT to request arguments — this is what makes the audit
+// trail and the review gate impossible for a caller to spoof. An agent-typed
+// connection can never claim to be a human, nor approve its own reviews.
+const PRINCIPAL_TYPE: "human" | "agent" | "system" = (() => {
+  const t = process.env.CMS_PRINCIPAL_TYPE;
+  return t === "human" || t === "agent" || t === "system" ? t : "agent";
+})();
+const PRINCIPAL_ID = process.env.CMS_PRINCIPAL_ID ?? "mcp-agent";
+
+function principalAuthor(note?: string) {
+  return { type: PRINCIPAL_TYPE, id: PRINCIPAL_ID, note };
+}
+
+const noteSchema = z
+  .string()
   .optional()
-  .describe("Who is making this change. Recorded immutably in the audit trail.");
+  .describe("optional note recorded in the audit trail (why this change was made)");
 
 // --- Schema discovery ------------------------------------------------------
 
@@ -136,10 +146,12 @@ server.registerTool(
       data: z.record(z.unknown()).describe("field values for this entry"),
       slug: z.string().optional(),
       status: z.enum(["draft", "published"]).optional(),
-      author: authorSchema,
+      note: noteSchema,
     },
   },
-  tool(async (args) => content.createEntry(args)),
+  tool(async ({ note, ...args }) =>
+    content.createEntry({ ...args, author: principalAuthor(note) }),
+  ),
 );
 
 server.registerTool(
@@ -151,10 +163,12 @@ server.registerTool(
     inputSchema: {
       id: z.string(),
       data: z.record(z.unknown()).describe("fields to change"),
-      author: authorSchema,
+      note: noteSchema,
     },
   },
-  tool(async (args) => content.updateEntry(args)),
+  tool(async ({ note, ...args }) =>
+    content.updateEntry({ ...args, author: principalAuthor(note) }),
+  ),
 );
 
 server.registerTool(
@@ -162,14 +176,16 @@ server.registerTool(
   {
     title: "Set entry status",
     description:
-      "Publish, unpublish (draft), or archive an entry. Recorded as a revision with author attribution.",
+      "Publish, unpublish (draft), or archive an entry. Recorded as a revision attributed to this server's principal. If the principal is an agent and the type requires approval, publishing queues a review instead.",
     inputSchema: {
       id: z.string(),
       status: z.enum(["draft", "published", "archived"]),
-      author: authorSchema,
+      note: noteSchema,
     },
   },
-  tool(async (args) => content.setEntryStatus(args)),
+  tool(async ({ note, ...args }) =>
+    content.setEntryStatus({ ...args, author: principalAuthor(note) }),
+  ),
 );
 
 server.registerTool(
@@ -192,10 +208,12 @@ server.registerTool(
     inputSchema: {
       id: z.string(),
       toRevision: z.number().int().positive(),
-      author: authorSchema,
+      note: noteSchema,
     },
   },
-  tool(async (args) => content.revertEntry(args)),
+  tool(async ({ note, ...args }) =>
+    content.revertEntry({ ...args, author: principalAuthor(note) }),
+  ),
 );
 
 // --- Review gate -----------------------------------------------------------
@@ -218,14 +236,15 @@ server.registerTool(
   {
     title: "Approve review",
     description:
-      "Approve a queued publish request — this publishes the entry. Intended for a human reviewer.",
+      "Approve a queued publish request — this publishes the entry. Requires a human or system principal; an agent-typed server cannot approve.",
     inputSchema: {
       requestId: z.string(),
-      author: authorSchema,
       note: z.string().optional().describe("decision note"),
     },
   },
-  tool(async (args) => content.approveReview(args)),
+  tool(async ({ requestId, note }) =>
+    content.approveReview({ requestId, note, author: principalAuthor(note) }),
+  ),
 );
 
 server.registerTool(
@@ -233,14 +252,15 @@ server.registerTool(
   {
     title: "Reject review",
     description:
-      "Reject a queued publish request — the entry returns to draft. Intended for a human reviewer.",
+      "Reject a queued publish request — the entry returns to draft. Requires a human or system principal; an agent-typed server cannot reject.",
     inputSchema: {
       requestId: z.string(),
-      author: authorSchema,
       note: z.string().optional().describe("decision note / reason"),
     },
   },
-  tool(async (args) => content.rejectReview(args)),
+  tool(async ({ requestId, note }) =>
+    content.rejectReview({ requestId, note, author: principalAuthor(note) }),
+  ),
 );
 
 // --- Webhooks / automation (n8n et al.) ------------------------------------
@@ -345,7 +365,9 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // stderr so it never corrupts the stdio JSON-RPC stream.
-  console.error("Yup CMS MCP server running on stdio");
+  console.error(
+    `Yup CMS MCP server running on stdio (principal: ${PRINCIPAL_TYPE}:${PRINCIPAL_ID})`,
+  );
 }
 
 main().catch((err) => {

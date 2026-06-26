@@ -21,6 +21,7 @@
     "db:studio": "drizzle-kit studio",
     "seed": "tsx src/scripts/seed.ts",
     "webhook:listen": "tsx src/scripts/webhook-listener.ts",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

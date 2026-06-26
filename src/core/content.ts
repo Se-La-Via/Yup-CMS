@@ -13,10 +13,19 @@ import {
   ValidationError,
 } from "./validation.js";
 import { emit } from "./events.js";
+import { shouldHoldForReview, mayDecideReview } from "./policy.js";
 
 export { ValidationError };
 
-/** Identity of whoever (or whatever) is performing a mutation. */
+/**
+ * Identity of whoever (or whatever) is performing a mutation.
+ *
+ * IMPORTANT: `type` is trust-bearing — it drives the review gate and the audit
+ * trail. Callers MUST set it from a trusted source (the MCP server's configured
+ * principal), never from un-trusted request arguments. The core layer trusts
+ * its in-process caller; enforcement of identity lives at the boundary
+ * (see src/mcp/server.ts).
+ */
 export interface Author {
   type: "human" | "agent" | "system";
   id: string;
@@ -27,9 +36,9 @@ function defaultAuthor(override?: Partial<Author>): Author {
   return {
     type:
       override?.type ??
-      (process.env.CMS_DEFAULT_AUTHOR_TYPE as Author["type"]) ??
+      (process.env.CMS_PRINCIPAL_TYPE as Author["type"]) ??
       "agent",
-    id: override?.id ?? process.env.CMS_DEFAULT_AUTHOR_ID ?? "agent",
+    id: override?.id ?? process.env.CMS_PRINCIPAL_ID ?? "agent",
     note: override?.note,
   };
 }
@@ -227,15 +236,16 @@ export async function setEntryStatus(input: {
   const author = defaultAuthor(input.author);
 
   // Review gate: an agent publishing a type that requires approval does not
-  // publish — it queues a request for a human. Humans bypass the gate (they
-  // are the approval).
-  if (input.status === "published" && author.type === "agent") {
+  // publish — it queues a request for a human. Humans/system bypass the gate
+  // (they are the approval). `author.type` is established by the trusted
+  // boundary, so an agent cannot spoof its way past this.
+  if (input.status === "published") {
     const entry = await getEntry(input.id);
     const [type] = await db
       .select()
       .from(contentTypes)
       .where(eq(contentTypes.id, entry.typeId));
-    if (type?.requireApproval) {
+    if (shouldHoldForReview(input.status, author.type, type?.requireApproval ?? false)) {
       return requestPublish(entry, author);
     }
   }
@@ -423,6 +433,11 @@ export async function approveReview(input: {
   note?: string;
 }) {
   const author = defaultAuthor({ type: "human", ...input.author });
+  if (!mayDecideReview(author.type)) {
+    throw new ValidationError([
+      "agents cannot approve reviews; a human or system principal is required",
+    ]);
+  }
 
   const result = await db.transaction(async (tx) => {
     const [review] = await tx
@@ -488,6 +503,11 @@ export async function rejectReview(input: {
   note?: string;
 }) {
   const author = defaultAuthor({ type: "human", ...input.author });
+  if (!mayDecideReview(author.type)) {
+    throw new ValidationError([
+      "agents cannot reject reviews; a human or system principal is required",
+    ]);
+  }
 
   const result = await db.transaction(async (tx) => {
     const [review] = await tx
