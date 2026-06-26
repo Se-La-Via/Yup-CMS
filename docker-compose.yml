@@ -53,5 +53,19 @@ services:
       - "${CMS_API_PORT:-3000}:${CMS_API_PORT:-3000}"
     restart: unless-stopped
 
+  # Delivers webhook events from the outbox with retries. Required for webhooks.
+  worker:
+    build: .
+    command: node dist/scripts/worker.js
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-yup}:${POSTGRES_PASSWORD:-yup}@db:5432/${POSTGRES_DB:-yup}
+      CMS_WORKER_INTERVAL_MS: ${CMS_WORKER_INTERVAL_MS:-2000}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
 volumes:
   yup_pgdata:

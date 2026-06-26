@@ -171,14 +171,37 @@ export const webhookDeliveries = pgTable("webhook_deliveries", {
     .references(() => webhooks.id, { onDelete: "cascade" }),
   event: text("event").notNull(),
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
-  status: text("status").notNull(), // "success" | "failed"
+  status: text("status").notNull(), // "pending" | "success" | "failed"
   statusCode: integer("status_code"),
   error: text("error"),
   durationMs: integer("duration_ms"),
+  // Retry state. A delivery is retried with backoff until it succeeds or the
+  // attempt budget is exhausted (then status = "failed").
+  attempts: integer("attempts").notNull().default(0),
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   // The delivery log is inspected per webhook, newest first.
   byWebhookCreated: index("deliveries_webhook_created").on(t.webhookId, t.createdAt),
+  // The worker polls for due pending deliveries.
+  due: index("deliveries_due").on(t.status, t.nextAttemptAt),
+}));
+
+/**
+ * Transactional outbox. An event row is written in the SAME transaction as the
+ * content mutation that produced it, so the event is recorded if and only if the
+ * change commits — no lost events, no phantom events, even if the process dies.
+ * A background worker fans these out into webhook_deliveries.
+ */
+export const eventOutbox = pgTable("event_outbox", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  event: text("event").notNull(),
+  data: jsonb("data").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // Null until the worker has fanned this event out to delivery rows.
+  dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+}, (t) => ({
+  undispatched: index("outbox_undispatched").on(t.dispatchedAt, t.createdAt),
 }));
 
 /**

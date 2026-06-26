@@ -12,7 +12,7 @@ import {
   validateFieldDefs,
   ValidationError,
 } from "./validation.js";
-import { emit } from "./events.js";
+import { recordEvent } from "./events.js";
 import { shouldHoldForReview, mayDecideReview } from "./policy.js";
 
 export { ValidationError };
@@ -81,18 +81,20 @@ export async function createContentType(input: {
   }
   validateFieldDefs(input.fields);
 
-  const [created] = await db
-    .insert(contentTypes)
-    .values({
-      name: input.name,
-      displayName: input.displayName,
-      description: input.description,
-      fields: input.fields,
-      requireApproval: input.requireApproval ?? false,
-    })
-    .returning();
-  await emit("type.created", { type: created });
-  return created;
+  return db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(contentTypes)
+      .values({
+        name: input.name,
+        displayName: input.displayName,
+        description: input.description,
+        fields: input.fields,
+        requireApproval: input.requireApproval ?? false,
+      })
+      .returning();
+    await recordEvent(tx, "type.created", { type: created });
+    return created!;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -171,10 +173,10 @@ export async function createEntry(input: {
       note: author.note,
     });
 
+    await recordEvent(tx, "entry.created", { entry: entry!, author });
     return entry!;
   });
 
-  await emit("entry.created", { entry, author });
   return entry;
 }
 
@@ -221,10 +223,10 @@ export async function updateEntry(input: {
       note: author.note,
     });
 
+    await recordEvent(tx, "entry.updated", { entry: updated!, author });
     return updated!;
   });
 
-  await emit("entry.updated", { entry: updated, author });
   return updated;
 }
 
@@ -275,16 +277,16 @@ export async function setEntryStatus(input: {
       note: author.note,
     });
 
+    const statusEvent =
+      input.status === "published"
+        ? "entry.published"
+        : input.status === "archived"
+          ? "entry.archived"
+          : "entry.unpublished";
+    await recordEvent(tx, statusEvent, { entry: updated!, author });
     return updated!;
   });
 
-  const statusEvent =
-    input.status === "published"
-      ? "entry.published"
-      : input.status === "archived"
-        ? "entry.archived"
-        : "entry.unpublished";
-  await emit(statusEvent, { entry: updated, author });
   return updated;
 }
 
@@ -336,10 +338,14 @@ export async function revertEntry(input: {
       note: author.note ?? `Reverted to revision ${input.toRevision}`,
     });
 
+    await recordEvent(tx, "entry.reverted", {
+      entry: updated!,
+      toRevision: input.toRevision,
+      author,
+    });
     return updated!;
   });
 
-  await emit("entry.reverted", { entry: updated, toRevision: input.toRevision, author });
   return updated;
 }
 
@@ -401,14 +407,14 @@ async function requestPublish(
       })
       .returning();
 
+    await recordEvent(tx, "entry.review_requested", {
+      entry: updated!,
+      review: review!,
+      author,
+    });
     return { entry: updated!, review: review! };
   });
 
-  await emit("entry.review_requested", {
-    entry: result.entry,
-    review: result.review,
-    author,
-  });
   return {
     pending: true,
     message: "Publish requires human approval. A review has been queued.",
@@ -485,15 +491,15 @@ export async function approveReview(input: {
       .where(eq(reviewRequests.id, review.id))
       .returning();
 
+    await recordEvent(tx, "entry.published", { entry: updated!, author });
+    await recordEvent(tx, "review.approved", {
+      review: decided!,
+      entry: updated!,
+      author,
+    });
     return { entry: updated!, review: decided! };
   });
 
-  await emit("entry.published", { entry: result.entry, author });
-  await emit("review.approved", {
-    review: result.review,
-    entry: result.entry,
-    author,
-  });
   return result;
 }
 
@@ -555,13 +561,13 @@ export async function rejectReview(input: {
       .where(eq(reviewRequests.id, review.id))
       .returning();
 
+    await recordEvent(tx, "review.rejected", {
+      review: decided!,
+      entry: updated!,
+      author,
+    });
     return { entry: updated!, review: decided! };
   });
 
-  await emit("review.rejected", {
-    review: result.review,
-    entry: result.entry,
-    author,
-  });
   return result;
 }

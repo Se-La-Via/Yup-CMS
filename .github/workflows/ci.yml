@@ -50,3 +50,6 @@ jobs:
       # revisions, and the review gate) against a real database.
       - run: npm run db:migrate
       - run: npm run seed
+      # Exercises the webhook pipeline end to end: transactional outbox →
+      # worker fan-out → signed HTTP delivery.
+      - run: npm run smoke:webhooks

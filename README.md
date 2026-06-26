@@ -123,10 +123,11 @@ All configuration is environment variables (see [`.env.example`](.env.example)):
 ```
 src/
   db/        schema.ts (7 tables) · client.ts · migrate via drizzle-orm
-  core/      validation · content (writes+revisions) · events · read · auth
+  core/      validation · content (writes+revisions) · events (outbox+worker)
+             · policy · backoff · read · auth
   mcp/       server.ts — 20 MCP tools (the write/control plane for agents)
   api/       server.ts — read-only HTTP API (the public surface)
-  scripts/   setup (wizard) · migrate · seed (demo) · webhook-listener
+  scripts/   setup · migrate · worker · seed · smoke-webhooks · webhook-listener
 drizzle/     SQL migrations (reproducible installs)
 Dockerfile · docker-compose.yml
 ```
@@ -192,15 +193,27 @@ Each delivery is a `POST` with JSON body `{ event, timestamp, data }` and header
 - `X-Yup-Signature` — `sha256=<hmac>` of the body (when the webhook has a
   secret), so the receiver can verify authenticity
 
-Deliveries are best-effort and **never block or fail a content mutation**; every
-attempt — success or failure, with HTTP status and latency — is recorded in
-`webhook_deliveries` and readable via `get_webhook_deliveries`.
+**Reliable by design (transactional outbox).** When a change commits, its event
+is written to an `event_outbox` table **in the same transaction** — so the event
+is recorded if and only if the change is saved, even if the process crashes a
+moment later. A separate **worker** (`npm run worker`, or the `worker` service in
+docker-compose) fans events out and delivers them, **retrying with backoff**
+(10s → 30s → 2m → 10m → 30m) until success or the attempt budget is exhausted.
+Delivery never blocks or fails the originating write. Every attempt — status,
+HTTP code, latency, attempt count — is recorded in `webhook_deliveries` and
+readable via `get_webhook_deliveries`.
+
+> The worker must be running for webhooks to be delivered. `docker compose up`
+> starts it automatically.
 
 ### Try it locally (no n8n needed)
 
 ```bash
 # terminal 1 — a receiver that verifies the signature
 npm run webhook:listen 4000 mysecret
+
+# terminal 2 — the delivery worker
+npm run worker
 
 # then register a hook (via the MCP tool) pointing at it:
 #   register_webhook { name: "local", url: "http://localhost:4000", secret: "mysecret" }
@@ -261,8 +274,8 @@ curl -H "Authorization: Bearer yup_..." \
 - ✅ API keys for the read API.
 - ✅ Docker Compose + setup wizard for easy self-hosting.
 - ✅ Spoof-proof attribution & unbypassable review gate (connection-bound principal).
-- ✅ CI (typecheck · tests · build · migrations on real Postgres), DB indexes, production image.
-- Webhook delivery retries (outbox pattern).
+- ✅ CI (typecheck · tests · build · migrations + webhook smoke test on real Postgres), DB indexes, production image.
+- ✅ Reliable webhook delivery — transactional outbox + worker with retries/backoff.
 - Media / asset handling.
 - GraphQL read layer alongside REST.
 - Admin GUI (secondary interface) over the same core.
