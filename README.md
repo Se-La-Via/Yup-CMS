@@ -333,6 +333,7 @@ Storage backends are configured with `CMS_STORAGE_BACKEND`:
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Security policy: [SECURITY.md](SECURITY.md).
+Release history: [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
