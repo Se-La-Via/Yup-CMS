@@ -11,8 +11,9 @@ export class ValidationError extends Error {
  * Validate a data object against a content type's field definitions.
  *
  * Returns a cleaned copy containing only declared fields (unknown keys are
- * dropped, not rejected — agents often send extra context). On `partial`
- * updates, required checks are skipped for omitted fields.
+ * dropped, not rejected — agents often send extra context). On a full (create)
+ * validation, omitted fields fall back to their `default`; on a `partial`
+ * update, omitted fields are left untouched and required/default are skipped.
  */
 export function validateEntryData(
   fields: FieldDef[],
@@ -24,21 +25,31 @@ export function validateEntryData(
 
   for (const field of fields) {
     const present = Object.prototype.hasOwnProperty.call(data, field.name);
-    const value = data[field.name];
+    let value = data[field.name];
 
     if (!present || value === null || value === undefined) {
-      if (field.required && !opts.partial) {
-        issues.push(`"${field.name}" is required`);
+      // Apply defaults only on full validation (create), not partial updates.
+      if (!opts.partial && field.default !== undefined) {
+        value = field.default;
+      } else {
+        if (field.required && !opts.partial) {
+          issues.push(`"${field.name}" is required`);
+        }
+        continue;
       }
-      continue;
     }
 
-    const err = checkType(field, value);
-    if (err) {
-      issues.push(`"${field.name}": ${err}`);
-    } else {
-      clean[field.name] = value;
+    const typeErr = checkType(field, value);
+    if (typeErr) {
+      issues.push(`"${field.name}": ${typeErr}`);
+      continue;
     }
+    const consErr = checkConstraints(field, value);
+    if (consErr) {
+      issues.push(`"${field.name}": ${consErr}`);
+      continue;
+    }
+    clean[field.name] = value;
   }
 
   if (issues.length > 0) throw new ValidationError(issues);
@@ -49,6 +60,7 @@ function checkType(field: FieldDef, value: unknown): string | null {
   switch (field.type) {
     case "text":
     case "richtext":
+    case "select":
       return typeof value === "string" ? null : "expected a string";
     case "number":
       return typeof value === "number" && Number.isFinite(value)
@@ -73,6 +85,39 @@ function checkType(field: FieldDef, value: unknown): string | null {
   }
 }
 
+/** Check value-level constraints (options, length/range, pattern). */
+function checkConstraints(field: FieldDef, value: unknown): string | null {
+  if (field.type === "select") {
+    const options = field.options ?? [];
+    if (!options.includes(value as string)) {
+      return `must be one of: ${options.join(", ")}`;
+    }
+  }
+
+  if (field.type === "number" && typeof value === "number") {
+    if (field.min !== undefined && value < field.min) {
+      return `must be >= ${field.min}`;
+    }
+    if (field.max !== undefined && value > field.max) {
+      return `must be <= ${field.max}`;
+    }
+  }
+
+  if ((field.type === "text" || field.type === "richtext") && typeof value === "string") {
+    if (field.min !== undefined && value.length < field.min) {
+      return `must be at least ${field.min} characters`;
+    }
+    if (field.max !== undefined && value.length > field.max) {
+      return `must be at most ${field.max} characters`;
+    }
+    if (field.pattern !== undefined && !new RegExp(field.pattern).test(value)) {
+      return `must match pattern ${field.pattern}`;
+    }
+  }
+
+  return null;
+}
+
 const FIELD_NAME_RE = /^[a-z][a-z0-9_]*$/;
 const VALID_TYPES = new Set([
   "text",
@@ -82,6 +127,7 @@ const VALID_TYPES = new Set([
   "date",
   "json",
   "reference",
+  "select",
 ]);
 
 /** Validate field definitions supplied when creating a content type. */
@@ -95,11 +141,34 @@ export function validateFieldDefs(fields: FieldDef[]): void {
     }
     if (seen.has(f.name)) issues.push(`duplicate field name "${f.name}"`);
     seen.add(f.name);
+
     if (!VALID_TYPES.has(f.type)) {
       issues.push(`field "${f.name}" has unknown type "${f.type}"`);
+      continue;
     }
     if (f.type === "reference" && !f.refType) {
       issues.push(`reference field "${f.name}" must specify refType`);
+    }
+    if (f.type === "select" && (!Array.isArray(f.options) || f.options.length === 0)) {
+      issues.push(`select field "${f.name}" must specify non-empty options`);
+    }
+    if (f.min !== undefined && f.max !== undefined && f.min > f.max) {
+      issues.push(`field "${f.name}" has min greater than max`);
+    }
+    if (f.pattern !== undefined) {
+      try {
+        new RegExp(f.pattern);
+      } catch {
+        issues.push(`field "${f.name}" has an invalid pattern`);
+      }
+    }
+    // A default, if given, must itself satisfy the field's type and constraints.
+    if (f.default !== undefined) {
+      const typeErr = checkType(f, f.default);
+      const consErr = typeErr ? null : checkConstraints(f, f.default);
+      if (typeErr || consErr) {
+        issues.push(`field "${f.name}" default is invalid: ${typeErr ?? consErr}`);
+      }
     }
   }
 

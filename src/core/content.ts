@@ -290,6 +290,32 @@ export async function setEntryStatus(input: {
   return updated;
 }
 
+/**
+ * Permanently delete an entry and its revision history (cascades). This is a
+ * hard delete — for a reversible "remove from view", set the status to archived
+ * instead.
+ */
+export async function deleteEntry(input: {
+  id: string;
+  author?: Partial<Author>;
+}) {
+  const author = defaultAuthor(input.author);
+
+  return db.transaction(async (tx) => {
+    const [entry] = await tx
+      .select()
+      .from(contentEntries)
+      .where(eq(contentEntries.id, input.id));
+    if (!entry) throw new NotFoundError(`entry "${input.id}" not found`);
+
+    // Record the event before the row (and its revisions) are gone.
+    await recordEvent(tx, "entry.deleted", { entry, author });
+    await tx.delete(contentEntries).where(eq(contentEntries.id, entry.id));
+
+    return { deleted: true, id: entry.id };
+  });
+}
+
 /** Restore an entry's data to a previous revision, recorded as a new revision. */
 export async function revertEntry(input: {
   id: string;

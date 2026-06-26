@@ -235,7 +235,8 @@ export type FieldType =
   | "boolean"
   | "date"
   | "json"
-  | "reference";
+  | "reference"
+  | "select";
 
 export interface FieldDef {
   name: string;
@@ -244,4 +245,13 @@ export interface FieldDef {
   description?: string;
   // For `reference` fields: the machine name of the content type referenced.
   refType?: string;
+  // Value applied on create when the field is omitted.
+  default?: unknown;
+  // For `select` fields: the allowed values.
+  options?: string[];
+  // For `number`: min/max value. For `text`/`richtext`: min/max length.
+  min?: number;
+  max?: number;
+  // For `text`/`richtext`: a regular expression the value must fully match.
+  pattern?: string;
 }

@@ -125,7 +125,7 @@ src/
   db/        schema.ts (7 tables) · client.ts · migrate via drizzle-orm
   core/      validation · content (writes+revisions) · events (outbox+worker)
              · policy · backoff · read · auth
-  mcp/       server.ts — 20 MCP tools (the write/control plane for agents)
+  mcp/       server.ts — 21 MCP tools (the write/control plane for agents)
   api/       server.ts — read-only HTTP API (the public surface)
   scripts/   setup · migrate · worker · seed · smoke-webhooks · webhook-listener
 drizzle/     SQL migrations (reproducible installs)
@@ -140,6 +140,7 @@ Dockerfile · docker-compose.yml
 | `create_content_type` | define a new schema |
 | `list_entries` / `get_entry` | read content |
 | `create_entry` / `update_entry` | write content (partial updates) |
+| `delete_entry` | permanently delete an entry (hard delete) |
 | `set_entry_status` | publish / unpublish / archive |
 | `get_entry_history` | full audit trail |
 | `revert_entry` | restore a previous revision |
@@ -147,6 +148,19 @@ Dockerfile · docker-compose.yml
 | `register_webhook` / `list_webhooks` / `delete_webhook` | manage event subscriptions |
 | `get_webhook_deliveries` | inspect the delivery log (debug integrations) |
 | `create_api_key` / `list_api_keys` / `revoke_api_key` | manage read-API keys |
+
+### Field types
+
+A content type's fields can be `text`, `richtext`, `number`, `boolean`, `date`,
+`json`, `select`, or `reference`. Each field supports optional constraints,
+validated on every write:
+
+- `required` — must be present
+- `default` — value applied on create when omitted
+- `options` — allowed values (required for `select`)
+- `min` / `max` — numeric range, or string length for `text`/`richtext`
+- `pattern` — regex a `text`/`richtext` value must match
+- `refType` — target content type for a `reference`
 
 ## Review gate (agents propose, humans dispose)
 
@@ -276,6 +290,7 @@ curl -H "Authorization: Bearer yup_..." \
 - ✅ Spoof-proof attribution & unbypassable review gate (connection-bound principal).
 - ✅ CI (typecheck · tests · build · migrations + webhook smoke test on real Postgres), DB indexes, production image.
 - ✅ Reliable webhook delivery — transactional outbox + worker with retries/backoff.
+- ✅ Rich field types & validation (select, defaults, min/max, regex) + `delete_entry`.
 - Media / asset handling.
 - GraphQL read layer alongside REST.
 - Admin GUI (secondary interface) over the same core.

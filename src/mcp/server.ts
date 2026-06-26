@@ -37,13 +37,30 @@ function tool<T>(handler: (args: T) => Promise<unknown>) {
 
 const fieldDefSchema = z.object({
   name: z.string().describe("snake_case field name, e.g. 'title'"),
-  type: z.enum(["text", "richtext", "number", "boolean", "date", "json", "reference"]),
+  type: z.enum([
+    "text",
+    "richtext",
+    "number",
+    "boolean",
+    "date",
+    "json",
+    "reference",
+    "select",
+  ]),
   required: z.boolean().optional(),
   description: z.string().optional(),
   refType: z
     .string()
     .optional()
     .describe("for 'reference' fields: machine name of the referenced content type"),
+  default: z.unknown().optional().describe("value used on create when omitted"),
+  options: z
+    .array(z.string())
+    .optional()
+    .describe("for 'select' fields: the allowed values"),
+  min: z.number().optional().describe("number: min value; text: min length"),
+  max: z.number().optional().describe("number: max value; text: max length"),
+  pattern: z.string().optional().describe("text: regex the value must match"),
 });
 
 // The trusted principal for this MCP connection. Identity is bound to the
@@ -213,6 +230,22 @@ server.registerTool(
   },
   tool(async ({ note, ...args }) =>
     content.revertEntry({ ...args, author: principalAuthor(note) }),
+  ),
+);
+
+server.registerTool(
+  "delete_entry",
+  {
+    title: "Delete entry",
+    description:
+      "Permanently delete an entry and its revision history. This is irreversible — to merely hide content, use set_entry_status with 'archived' instead.",
+    inputSchema: {
+      id: z.string(),
+      note: noteSchema,
+    },
+  },
+  tool(async ({ note, ...args }) =>
+    content.deleteEntry({ ...args, author: principalAuthor(note) }),
   ),
 );
 
