@@ -1,0 +1,57 @@
+# Yup CMS — one-command self-host.
+#
+#   cp .env.example .env   (or: npm run setup)
+#   docker compose up -d
+#
+# Brings up Postgres, applies migrations once, then starts the read API.
+# Values come from .env (see .env.example); the defaults below are dev-only.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-yup}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-yup}
+      POSTGRES_DB: ${POSTGRES_DB:-yup}
+    volumes:
+      - yup_pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-yup} -d ${POSTGRES_DB:-yup}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: applies pending migrations, then exits.
+  migrate:
+    build: .
+    command: npm run db:migrate
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-yup}:${POSTGRES_PASSWORD:-yup}@db:5432/${POSTGRES_DB:-yup}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: .
+    command: npm run api
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-yup}:${POSTGRES_PASSWORD:-yup}@db:5432/${POSTGRES_DB:-yup}
+      CMS_API_PORT: ${CMS_API_PORT:-3000}
+      CMS_REQUIRE_API_KEY: ${CMS_REQUIRE_API_KEY:-false}
+      CMS_DEFAULT_AUTHOR_TYPE: ${CMS_DEFAULT_AUTHOR_TYPE:-agent}
+      CMS_DEFAULT_AUTHOR_ID: ${CMS_DEFAULT_AUTHOR_ID:-yup-agent}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${CMS_API_PORT:-3000}:${CMS_API_PORT:-3000}"
+    restart: unless-stopped
+
+volumes:
+  yup_pgdata:

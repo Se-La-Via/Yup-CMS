@@ -1,0 +1,354 @@
+import "dotenv/config";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import * as content from "../core/content.js";
+import { ValidationError, NotFoundError } from "../core/content.js";
+import * as events from "../core/events.js";
+import * as auth from "../core/auth.js";
+
+const server = new McpServer({
+  name: "yup-cms",
+  version: "0.1.0",
+});
+
+/** Wrap a handler so domain errors become readable, non-fatal tool responses. */
+function tool<T>(handler: (args: T) => Promise<unknown>) {
+  return async (args: T) => {
+    try {
+      const result = await handler(args);
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (err) {
+      const message =
+        err instanceof ValidationError || err instanceof NotFoundError
+          ? err.message
+          : `Unexpected error: ${(err as Error).message}`;
+      return {
+        content: [{ type: "text" as const, text: message }],
+        isError: true,
+      };
+    }
+  };
+}
+
+// Reusable schema fragments -------------------------------------------------
+
+const fieldDefSchema = z.object({
+  name: z.string().describe("snake_case field name, e.g. 'title'"),
+  type: z.enum(["text", "richtext", "number", "boolean", "date", "json", "reference"]),
+  required: z.boolean().optional(),
+  description: z.string().optional(),
+  refType: z
+    .string()
+    .optional()
+    .describe("for 'reference' fields: machine name of the referenced content type"),
+});
+
+const authorSchema = z
+  .object({
+    type: z.enum(["human", "agent", "system"]).optional(),
+    id: z.string().optional().describe("identity, e.g. an email or agent name"),
+    note: z.string().optional().describe("why this change was made"),
+  })
+  .optional()
+  .describe("Who is making this change. Recorded immutably in the audit trail.");
+
+// --- Schema discovery ------------------------------------------------------
+
+server.registerTool(
+  "list_content_types",
+  {
+    title: "List content types",
+    description:
+      "List all content types (schemas) defined in the CMS. Call this first to discover what kinds of content exist.",
+    inputSchema: {},
+  },
+  tool(async () => content.listContentTypes()),
+);
+
+server.registerTool(
+  "get_content_type",
+  {
+    title: "Get content type",
+    description: "Get one content type by its machine name, including its full field schema.",
+    inputSchema: { name: z.string() },
+  },
+  tool(async ({ name }) => content.getContentType(name)),
+);
+
+server.registerTool(
+  "create_content_type",
+  {
+    title: "Create content type",
+    description:
+      "Define a new content type (schema). Fields describe the shape of every entry of this type.",
+    inputSchema: {
+      name: z.string().describe("snake_case machine name, e.g. 'blog_post'"),
+      displayName: z.string(),
+      description: z.string().optional(),
+      fields: z.array(fieldDefSchema),
+      requireApproval: z
+        .boolean()
+        .optional()
+        .describe("if true, an agent's publish is held for human approval (review gate)"),
+    },
+  },
+  tool(async (args) => content.createContentType(args)),
+);
+
+// --- Entries ---------------------------------------------------------------
+
+server.registerTool(
+  "list_entries",
+  {
+    title: "List entries",
+    description: "List entries of a given content type, optionally filtered by status.",
+    inputSchema: {
+      type: z.string().describe("content type machine name"),
+      status: z.enum(["draft", "published", "archived"]).optional(),
+      limit: z.number().int().positive().max(200).optional(),
+      offset: z.number().int().nonnegative().optional(),
+    },
+  },
+  tool(async (args) => content.listEntries(args)),
+);
+
+server.registerTool(
+  "get_entry",
+  {
+    title: "Get entry",
+    description: "Get a single entry by its id, including current data and status.",
+    inputSchema: { id: z.string() },
+  },
+  tool(async ({ id }) => content.getEntry(id)),
+);
+
+server.registerTool(
+  "create_entry",
+  {
+    title: "Create entry",
+    description:
+      "Create a new content entry. Data is validated against the content type's schema. Defaults to draft.",
+    inputSchema: {
+      type: z.string().describe("content type machine name"),
+      data: z.record(z.unknown()).describe("field values for this entry"),
+      slug: z.string().optional(),
+      status: z.enum(["draft", "published"]).optional(),
+      author: authorSchema,
+    },
+  },
+  tool(async (args) => content.createEntry(args)),
+);
+
+server.registerTool(
+  "update_entry",
+  {
+    title: "Update entry",
+    description:
+      "Update an entry's fields (partial — only supplied fields change). Creates a new revision in the audit trail.",
+    inputSchema: {
+      id: z.string(),
+      data: z.record(z.unknown()).describe("fields to change"),
+      author: authorSchema,
+    },
+  },
+  tool(async (args) => content.updateEntry(args)),
+);
+
+server.registerTool(
+  "set_entry_status",
+  {
+    title: "Set entry status",
+    description:
+      "Publish, unpublish (draft), or archive an entry. Recorded as a revision with author attribution.",
+    inputSchema: {
+      id: z.string(),
+      status: z.enum(["draft", "published", "archived"]),
+      author: authorSchema,
+    },
+  },
+  tool(async (args) => content.setEntryStatus(args)),
+);
+
+server.registerTool(
+  "get_entry_history",
+  {
+    title: "Get entry history",
+    description:
+      "Get the full revision history of an entry — every change, who made it (human/agent), and why.",
+    inputSchema: { id: z.string() },
+  },
+  tool(async ({ id }) => content.getEntryHistory(id)),
+);
+
+server.registerTool(
+  "revert_entry",
+  {
+    title: "Revert entry",
+    description:
+      "Restore an entry's data to a previous revision. The revert itself is recorded as a new revision.",
+    inputSchema: {
+      id: z.string(),
+      toRevision: z.number().int().positive(),
+      author: authorSchema,
+    },
+  },
+  tool(async (args) => content.revertEntry(args)),
+);
+
+// --- Review gate -----------------------------------------------------------
+
+server.registerTool(
+  "list_reviews",
+  {
+    title: "List reviews",
+    description:
+      "List publish-review requests (the human approval queue), optionally filtered by status.",
+    inputSchema: {
+      status: z.enum(["pending", "approved", "rejected"]).optional(),
+    },
+  },
+  tool(async (args) => content.listReviews(args)),
+);
+
+server.registerTool(
+  "approve_review",
+  {
+    title: "Approve review",
+    description:
+      "Approve a queued publish request — this publishes the entry. Intended for a human reviewer.",
+    inputSchema: {
+      requestId: z.string(),
+      author: authorSchema,
+      note: z.string().optional().describe("decision note"),
+    },
+  },
+  tool(async (args) => content.approveReview(args)),
+);
+
+server.registerTool(
+  "reject_review",
+  {
+    title: "Reject review",
+    description:
+      "Reject a queued publish request — the entry returns to draft. Intended for a human reviewer.",
+    inputSchema: {
+      requestId: z.string(),
+      author: authorSchema,
+      note: z.string().optional().describe("decision note / reason"),
+    },
+  },
+  tool(async (args) => content.rejectReview(args)),
+);
+
+// --- Webhooks / automation (n8n et al.) ------------------------------------
+
+server.registerTool(
+  "register_webhook",
+  {
+    title: "Register webhook",
+    description:
+      "Subscribe an HTTP endpoint (e.g. an n8n webhook node) to content events. Omit 'events' to receive all. " +
+      `Valid events: ${events.EVENT_TYPES.join(", ")}.`,
+    inputSchema: {
+      name: z.string(),
+      url: z.string().describe("http(s) URL that will receive POST deliveries"),
+      events: z
+        .array(z.enum(events.EVENT_TYPES))
+        .optional()
+        .describe("event types to subscribe to; empty/omitted = all"),
+      secret: z
+        .string()
+        .optional()
+        .describe("shared secret; deliveries are signed with HMAC-SHA256 in X-Yup-Signature"),
+    },
+  },
+  tool(async (args) => events.registerWebhook(args)),
+);
+
+server.registerTool(
+  "list_webhooks",
+  {
+    title: "List webhooks",
+    description: "List all registered webhook subscriptions.",
+    inputSchema: {},
+  },
+  tool(async () => events.listWebhooks()),
+);
+
+server.registerTool(
+  "delete_webhook",
+  {
+    title: "Delete webhook",
+    description: "Remove a webhook subscription by id.",
+    inputSchema: { id: z.string() },
+  },
+  tool(async ({ id }) => events.deleteWebhook(id)),
+);
+
+server.registerTool(
+  "get_webhook_deliveries",
+  {
+    title: "Get webhook deliveries",
+    description:
+      "Inspect the delivery log — which events fired, where, success/failure, HTTP status, and latency. Use this to debug integrations.",
+    inputSchema: {
+      webhookId: z.string().optional().describe("filter to one webhook"),
+      limit: z.number().int().positive().max(200).optional(),
+    },
+  },
+  tool(async (args) => events.getDeliveries(args)),
+);
+
+// --- API keys (read-API auth) ----------------------------------------------
+
+server.registerTool(
+  "create_api_key",
+  {
+    title: "Create API key",
+    description:
+      "Mint an API key for the read API. The raw key is returned ONCE — store it now. " +
+      `Scopes: ${auth.SCOPES.join(", ")} (default: read:published).`,
+    inputSchema: {
+      name: z.string(),
+      scopes: z.array(z.enum(auth.SCOPES)).optional(),
+    },
+  },
+  tool(async (args) => auth.createApiKey(args)),
+);
+
+server.registerTool(
+  "list_api_keys",
+  {
+    title: "List API keys",
+    description: "List API keys (prefixes and scopes only — never the raw key or its hash).",
+    inputSchema: {},
+  },
+  tool(async () => auth.listApiKeys()),
+);
+
+server.registerTool(
+  "revoke_api_key",
+  {
+    title: "Revoke API key",
+    description: "Deactivate an API key by id. Takes effect immediately.",
+    inputSchema: { id: z.string() },
+  },
+  tool(async ({ id }) => auth.revokeApiKey(id)),
+);
+
+// --- Boot ------------------------------------------------------------------
+
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  // stderr so it never corrupts the stdio JSON-RPC stream.
+  console.error("Yup CMS MCP server running on stdio");
+}
+
+main().catch((err) => {
+  console.error("Fatal:", err);
+  process.exit(1);
+});

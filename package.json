@@ -1,0 +1,39 @@
+{
+  "name": "yup-cms",
+  "version": "0.1.0",
+  "description": "Agent-native headless CMS. A content backend that AI agents drive as naturally as humans click a mouse.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Se-La-Via/Yup-CMS.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "setup": "tsx src/scripts/setup.ts",
+    "mcp": "tsx src/mcp/server.ts",
+    "api": "tsx src/api/server.ts",
+    "db:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/scripts/migrate.ts",
+    "db:studio": "drizzle-kit studio",
+    "seed": "tsx src/scripts/seed.ts",
+    "webhook:listen": "tsx src/scripts/webhook-listener.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.36.0",
+    "postgres": "^3.4.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "drizzle-kit": "^0.28.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
