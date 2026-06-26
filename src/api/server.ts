@@ -4,6 +4,7 @@ import * as read from "../core/read.js";
 import * as content from "../core/content.js";
 import * as auth from "../core/auth.js";
 import * as assets from "../core/assets.js";
+import { createLimiterFromEnv } from "../core/ratelimit.js";
 import { NotFoundError, ValidationError } from "../core/content.js";
 
 /**
@@ -25,11 +26,17 @@ import { NotFoundError, ValidationError } from "../core/content.js";
 const port = Number(process.env.CMS_API_PORT ?? 3000);
 const VALID_STATUS = new Set(["draft", "pending_review", "published", "archived"]);
 
-function send(res: ServerResponse, status: number, body: unknown) {
+function send(
+  res: ServerResponse,
+  status: number,
+  body: unknown,
+  extraHeaders: Record<string, string> = {},
+) {
   res.writeHead(status, {
     "content-type": "application/json",
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET, OPTIONS",
+    ...extraHeaders,
   });
   res.end(JSON.stringify(body, null, 2));
 }
@@ -38,6 +45,17 @@ function num(v: string | null): number | undefined {
   if (v === null) return undefined;
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
+}
+
+const limiter = createLimiterFromEnv();
+
+/** Identify the caller for rate limiting: first proxied IP, else socket addr. */
+function clientKey(req: import("node:http").IncomingMessage): string {
+  const xff = req.headers["x-forwarded-for"];
+  if (typeof xff === "string" && xff.length > 0) {
+    return xff.split(",")[0]!.trim();
+  }
+  return req.socket.remoteAddress ?? "unknown";
 }
 
 const server = createServer(async (req, res) => {
@@ -61,9 +79,27 @@ const server = createServer(async (req, res) => {
   const status = (statusParam ?? undefined) as read.Status | undefined;
 
   try {
-    // /health — always open, no auth.
+    // /health — always open, no auth, no rate limit (for orchestrator probes).
     if (seg.length === 1 && seg[0] === "health") {
       return send(res, 200, { ok: true, service: "yup-cms", api: "read" });
+    }
+
+    // --- Rate limiting ----------------------------------------------------
+    if (limiter) {
+      const r = limiter.check(clientKey(req), Date.now());
+      if (!r.allowed) {
+        const retryAfter = Math.ceil(r.retryAfterMs / 1000);
+        return send(
+          res,
+          429,
+          { error: "rate limit exceeded", retryAfterSeconds: retryAfter },
+          {
+            "retry-after": String(retryAfter),
+            "x-ratelimit-limit": String(limiter.limit),
+            "x-ratelimit-remaining": "0",
+          },
+        );
+      }
     }
 
     // --- Authentication / authorization -----------------------------------

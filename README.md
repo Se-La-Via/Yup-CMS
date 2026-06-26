@@ -281,7 +281,13 @@ curl -H "Authorization: Bearer yup_..." \
 > key administration and content writes go through it. The read API is the
 > untrusted public surface, which is what keys protect.
 
-## Media & assets
+### Rate limiting
+
+The read API is rate-limited per client IP with a token bucket (default **120
+requests / 60s**; tune with `CMS_RATE_LIMIT` and `CMS_RATE_WINDOW_MS`, or set
+`CMS_RATE_LIMIT=0` to disable). Over the limit returns `429` with a `Retry-After`
+header; `/health` is exempt. The limiter is per-process — front a multi-instance
+fleet with a shared store (e.g. Redis) if you need a global limit.
 
 Upload files through the MCP tool `upload_asset` — either inline base64 or by
 giving a `sourceUrl` for the server to fetch (handy when an agent generates an
@@ -319,9 +325,10 @@ Storage backends are configured with `CMS_STORAGE_BACKEND`:
 - ✅ Rich field types & validation (select, defaults, min/max, regex) + `delete_entry`.
 - ✅ Media / asset handling (upload + serve; pluggable storage).
 - ✅ S3-compatible storage backend (local + S3, both CI-tested).
+- ✅ Rate limiting on the read API (token bucket, per IP).
 - GraphQL read layer alongside REST.
 - Admin GUI (secondary interface) over the same core.
-- Multi-tenant scoping & per-key rate limits.
+- Multi-tenant scoping; distributed (Redis-backed) rate limiting; unique fields.
 
 ## Contributing
 
