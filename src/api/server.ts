@@ -3,6 +3,7 @@ import { createServer, type ServerResponse } from "node:http";
 import * as read from "../core/read.js";
 import * as content from "../core/content.js";
 import * as auth from "../core/auth.js";
+import * as assets from "../core/assets.js";
 import { NotFoundError, ValidationError } from "../core/content.js";
 
 /**
@@ -15,6 +16,8 @@ import { NotFoundError, ValidationError } from "../core/content.js";
  *       ?status=&slug=&limit=&offset=&resolve=true
  *   GET /content/:type/:slug           one entry by slug
  *   GET /entries/:id                   one entry by id  (?resolve=true)
+ *   GET /assets                        list asset metadata
+ *   GET /assets/:id                    stream an asset's bytes
  *
  * Writes happen through the MCP server, never here — this surface only reads.
  */
@@ -100,6 +103,22 @@ const server = createServer(async (req, res) => {
     // /entries/:id
     if (seg[0] === "entries" && seg.length === 2) {
       return send(res, 200, await read.getById({ id: seg[1]!, resolve }));
+    }
+
+    // /assets — list metadata; /assets/:id — stream the bytes
+    if (seg[0] === "assets" && seg.length === 1) {
+      return send(res, 200, await assets.listAssets());
+    }
+    if (seg[0] === "assets" && seg.length === 2) {
+      const { meta, bytes } = await assets.getAssetBytes(seg[1]!);
+      res.writeHead(200, {
+        "content-type": meta.contentType,
+        "content-length": String(bytes.length),
+        "cache-control": "public, max-age=31536000, immutable",
+        "access-control-allow-origin": "*",
+      });
+      res.end(bytes);
+      return;
     }
 
     // /content/:type and /content/:type/:slug

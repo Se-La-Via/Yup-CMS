@@ -224,6 +224,22 @@ export const apiKeys = pgTable("api_keys", {
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
 });
 
+/**
+ * Uploaded media/assets. The bytes live in a storage backend (local FS by
+ * default, see src/core/storage.ts); this table holds the metadata and the
+ * storage key. A CMS needs first-class media — images, downloads, etc.
+ */
+export const assets = pgTable("assets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  filename: text("filename").notNull(),
+  contentType: text("content_type").notNull(),
+  size: integer("size").notNull(),
+  // SHA-256 of the bytes, for integrity / dedupe.
+  checksum: text("checksum").notNull(),
+  storageKey: text("storage_key").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------------------------------------------------------------------------
 // Field definition shape (stored inside content_types.fields)
 // ---------------------------------------------------------------------------

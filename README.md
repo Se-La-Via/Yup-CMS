@@ -124,10 +124,10 @@ All configuration is environment variables (see [`.env.example`](.env.example)):
 src/
   db/        schema.ts (7 tables) · client.ts · migrate via drizzle-orm
   core/      validation · content (writes+revisions) · events (outbox+worker)
-             · policy · backoff · read · auth
-  mcp/       server.ts — 21 MCP tools (the write/control plane for agents)
-  api/       server.ts — read-only HTTP API (the public surface)
-  scripts/   setup · migrate · worker · seed · smoke-webhooks · webhook-listener
+             · policy · backoff · read · auth · assets · storage
+  mcp/       server.ts — 25 MCP tools (the write/control plane for agents)
+  api/       server.ts — read-only HTTP API + asset serving (the public surface)
+  scripts/   setup · migrate · worker · seed · smoke-{webhooks,assets} · webhook-listener
 drizzle/     SQL migrations (reproducible installs)
 Dockerfile · docker-compose.yml
 ```
@@ -148,6 +148,7 @@ Dockerfile · docker-compose.yml
 | `register_webhook` / `list_webhooks` / `delete_webhook` | manage event subscriptions |
 | `get_webhook_deliveries` | inspect the delivery log (debug integrations) |
 | `create_api_key` / `list_api_keys` / `revoke_api_key` | manage read-API keys |
+| `upload_asset` / `list_assets` / `get_asset` / `delete_asset` | manage media/assets |
 
 ### Field types
 
@@ -280,6 +281,26 @@ curl -H "Authorization: Bearer yup_..." \
 > key administration and content writes go through it. The read API is the
 > untrusted public surface, which is what keys protect.
 
+## Media & assets
+
+Upload files through the MCP tool `upload_asset` — either inline base64 or by
+giving a `sourceUrl` for the server to fetch (handy when an agent generates an
+image elsewhere). Metadata (filename, MIME type, size, SHA-256) is stored in
+Postgres; the bytes go to a pluggable storage backend. Serve them publicly:
+
+```
+GET /assets          → list metadata
+GET /assets/:id      → stream the bytes (correct Content-Type, long cache)
+```
+
+Storage backends are configured with `CMS_STORAGE_BACKEND` (default `local`,
+dir `CMS_STORAGE_DIR`). `CMS_MAX_ASSET_BYTES` caps upload size.
+
+> **Local backend caveat:** the uploader (MCP) and the read API must share the
+> storage directory. On a single host (or one docker volume) that's automatic;
+> for multi-host/serverless, an S3-compatible backend is the intended path
+> (the `StorageBackend` interface is ready for it).
+
 ## Roadmap
 
 - ✅ Webhooks / events for n8n and other automations.
@@ -291,7 +312,8 @@ curl -H "Authorization: Bearer yup_..." \
 - ✅ CI (typecheck · tests · build · migrations + webhook smoke test on real Postgres), DB indexes, production image.
 - ✅ Reliable webhook delivery — transactional outbox + worker with retries/backoff.
 - ✅ Rich field types & validation (select, defaults, min/max, regex) + `delete_entry`.
-- Media / asset handling.
+- ✅ Media / asset handling (upload + serve; pluggable storage, local backend).
+- S3-compatible storage backend for multi-host deployments.
 - GraphQL read layer alongside REST.
 - Admin GUI (secondary interface) over the same core.
 - Multi-tenant scoping & per-key rate limits.

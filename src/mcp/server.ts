@@ -6,6 +6,7 @@ import * as content from "../core/content.js";
 import { ValidationError, NotFoundError } from "../core/content.js";
 import * as events from "../core/events.js";
 import * as auth from "../core/auth.js";
+import * as assets from "../core/assets.js";
 
 const server = new McpServer({
   name: "yup-cms",
@@ -353,6 +354,54 @@ server.registerTool(
     },
   },
   tool(async (args) => events.getDeliveries(args)),
+);
+
+// --- Assets / media --------------------------------------------------------
+
+server.registerTool(
+  "upload_asset",
+  {
+    title: "Upload asset",
+    description:
+      "Upload a media asset from inline base64 data or by fetching a source URL. Returns the asset metadata; serve it at GET /assets/:id on the read API.",
+    inputSchema: {
+      filename: z.string(),
+      contentType: z.string().optional().describe("MIME type, e.g. image/png"),
+      dataBase64: z.string().optional().describe("base64-encoded file contents"),
+      sourceUrl: z.string().optional().describe("http(s) URL to fetch the asset from"),
+    },
+  },
+  tool(async (args) => assets.createAsset(args)),
+);
+
+server.registerTool(
+  "list_assets",
+  {
+    title: "List assets",
+    description: "List uploaded asset metadata, newest first.",
+    inputSchema: {},
+  },
+  tool(async () => assets.listAssets()),
+);
+
+server.registerTool(
+  "get_asset",
+  {
+    title: "Get asset",
+    description: "Get one asset's metadata by id.",
+    inputSchema: { id: z.string() },
+  },
+  tool(async ({ id }) => assets.getAsset(id)),
+);
+
+server.registerTool(
+  "delete_asset",
+  {
+    title: "Delete asset",
+    description: "Delete an asset's metadata and its stored bytes.",
+    inputSchema: { id: z.string() },
+  },
+  tool(async ({ id }) => assets.deleteAsset(id)),
 );
 
 // --- API keys (read-API auth) ----------------------------------------------

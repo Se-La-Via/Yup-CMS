@@ -53,3 +53,5 @@ jobs:
       # Exercises the webhook pipeline end to end: transactional outbox →
       # worker fan-out → signed HTTP delivery.
       - run: npm run smoke:webhooks
+      # Exercises the asset pipeline: upload → store → fetch bytes → delete.
+      - run: npm run smoke:assets

@@ -21,6 +21,7 @@
     "start:migrate": "node dist/scripts/migrate.js",
     "start:worker": "node dist/scripts/worker.js",
     "smoke:webhooks": "tsx src/scripts/smoke-webhooks.ts",
+    "smoke:assets": "tsx src/scripts/smoke-assets.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/scripts/migrate.ts",

@@ -42,8 +42,13 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-yup}:${POSTGRES_PASSWORD:-yup}@db:5432/${POSTGRES_DB:-yup}
       CMS_API_PORT: ${CMS_API_PORT:-3000}
       CMS_REQUIRE_API_KEY: ${CMS_REQUIRE_API_KEY:-false}
-      # The read API never writes, so it needs no principal. The MCP server
-      # (run by your agent client) sets CMS_PRINCIPAL_TYPE/ID; see .env.example.
+      # Asset bytes (local backend). For the MCP server to upload into the same
+      # place, point its CMS_STORAGE_DIR at this volume too, or use an S3 backend.
+      CMS_STORAGE_DIR: /app/storage
+      # The read API never writes content, so it needs no principal. The MCP
+      # server (run by your agent client) sets CMS_PRINCIPAL_TYPE/ID; see .env.example.
+    volumes:
+      - yup_storage:/app/storage
     depends_on:
       db:
         condition: service_healthy
@@ -69,3 +74,4 @@ services:
 
 volumes:
   yup_pgdata:
+  yup_storage:
