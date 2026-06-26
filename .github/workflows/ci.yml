@@ -55,3 +55,55 @@ jobs:
       - run: npm run smoke:webhooks
       # Exercises the asset pipeline: upload → store → fetch bytes → delete.
       - run: npm run smoke:assets
+
+  s3:
+    name: assets on S3 (MinIO)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: yup
+          POSTGRES_PASSWORD: yup
+          POSTGRES_DB: yup
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U yup -d yup"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      minio:
+        image: bitnami/minio:latest
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+          MINIO_DEFAULT_BUCKETS: yup-assets
+        ports:
+          - 9000:9000
+    env:
+      DATABASE_URL: postgres://yup:yup@localhost:5432/yup
+      CMS_STORAGE_BACKEND: s3
+      CMS_S3_ENDPOINT: http://localhost:9000
+      CMS_S3_REGION: us-east-1
+      CMS_S3_BUCKET: yup-assets
+      CMS_S3_ACCESS_KEY_ID: minioadmin
+      CMS_S3_SECRET_ACCESS_KEY: minioadmin
+      CMS_S3_FORCE_PATH_STYLE: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Wait for MinIO
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/live; then echo "minio up"; exit 0; fi
+            sleep 2
+          done
+          echo "minio did not become ready" && exit 1
+      - run: npm run db:migrate
+      # Same asset smoke test, now against an S3-compatible backend.
+      - run: npm run smoke:assets

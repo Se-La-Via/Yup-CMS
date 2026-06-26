@@ -293,13 +293,18 @@ GET /assets          → list metadata
 GET /assets/:id      → stream the bytes (correct Content-Type, long cache)
 ```
 
-Storage backends are configured with `CMS_STORAGE_BACKEND` (default `local`,
-dir `CMS_STORAGE_DIR`). `CMS_MAX_ASSET_BYTES` caps upload size.
+Storage backends are configured with `CMS_STORAGE_BACKEND`:
 
-> **Local backend caveat:** the uploader (MCP) and the read API must share the
-> storage directory. On a single host (or one docker volume) that's automatic;
-> for multi-host/serverless, an S3-compatible backend is the intended path
-> (the `StorageBackend` interface is ready for it).
+- **`local`** (default) — files under `CMS_STORAGE_DIR`. Simplest; the uploader
+  (MCP) and the read API must share that directory (one host or one volume).
+- **`s3`** — any S3-compatible store (AWS S3, MinIO, Cloudflare R2, Supabase
+  Storage). Set `CMS_S3_BUCKET`/`CMS_S3_REGION`, optionally `CMS_S3_ENDPOINT` +
+  `CMS_S3_FORCE_PATH_STYLE=true` for non-AWS, and credentials (or rely on the
+  IAM default chain). This removes the shared-directory constraint, so it's the
+  choice for multi-host/serverless. See [`.env.example`](.env.example).
+
+`CMS_MAX_ASSET_BYTES` caps upload size. Both backends are exercised in CI
+(S3 against a MinIO service).
 
 ## Roadmap
 
@@ -312,8 +317,8 @@ dir `CMS_STORAGE_DIR`). `CMS_MAX_ASSET_BYTES` caps upload size.
 - ✅ CI (typecheck · tests · build · migrations + webhook smoke test on real Postgres), DB indexes, production image.
 - ✅ Reliable webhook delivery — transactional outbox + worker with retries/backoff.
 - ✅ Rich field types & validation (select, defaults, min/max, regex) + `delete_entry`.
-- ✅ Media / asset handling (upload + serve; pluggable storage, local backend).
-- S3-compatible storage backend for multi-host deployments.
+- ✅ Media / asset handling (upload + serve; pluggable storage).
+- ✅ S3-compatible storage backend (local + S3, both CI-tested).
 - GraphQL read layer alongside REST.
 - Admin GUI (secondary interface) over the same core.
 - Multi-tenant scoping & per-key rate limits.
