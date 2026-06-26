@@ -62,6 +62,7 @@ const fieldDefSchema = z.object({
   min: z.number().optional().describe("number: min value; text: min length"),
   max: z.number().optional().describe("number: max value; text: max length"),
   pattern: z.string().optional().describe("text: regex the value must match"),
+  unique: z.boolean().optional().describe("value must be unique within the type"),
 });
 
 // The trusted principal for this MCP connection. Identity is bound to the

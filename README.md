@@ -162,6 +162,7 @@ validated on every write:
 - `options` — allowed values (required for `select`)
 - `min` / `max` — numeric range, or string length for `text`/`richtext`
 - `pattern` — regex a `text`/`richtext` value must match
+- `unique` — value must be unique among entries of the type
 - `refType` — target content type for a `reference`
 
 ## Review gate (agents propose, humans dispose)
@@ -348,8 +349,9 @@ Storage backends are configured with `CMS_STORAGE_BACKEND`:
 - ✅ S3-compatible storage backend (local + S3, both CI-tested).
 - ✅ Rate limiting on the read API (token bucket, per IP).
 - ✅ Admin dashboard for human oversight (review queue, publish, webhooks, assets).
+- ✅ Unique field constraints.
 - GraphQL read layer alongside REST.
-- Multi-tenant scoping; distributed (Redis-backed) rate limiting; unique fields.
+- Multi-tenant scoping; distributed (Redis-backed) rate limiting.
 
 ## Contributing
 

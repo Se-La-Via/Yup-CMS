@@ -270,4 +270,6 @@ export interface FieldDef {
   max?: number;
   // For `text`/`richtext`: a regular expression the value must fully match.
   pattern?: string;
+  // Value must be unique among entries of this type (best-effort, checked on write).
+  unique?: boolean;
 }

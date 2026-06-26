@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import {
   contentTypes,
@@ -47,6 +47,46 @@ export class NotFoundError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "NotFoundError";
+  }
+}
+
+// The transaction handle type, derived from db.transaction.
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Enforce `unique` field constraints by checking for an existing entry of the
+ * same type with the same value. Best-effort: under heavy concurrency a true
+ * guarantee would need a unique index on the JSONB expression; this check runs
+ * inside the mutation's transaction, which is sufficient for typical use.
+ */
+async function checkUnique(
+  tx: Tx,
+  typeId: string,
+  fields: FieldDef[],
+  data: Record<string, unknown>,
+  excludeId?: string,
+) {
+  const uniques = fields.filter(
+    (f) => f.unique && Object.prototype.hasOwnProperty.call(data, f.name),
+  );
+  for (const f of uniques) {
+    const value = data[f.name];
+    if (value === null || value === undefined) continue;
+    const conds = [
+      eq(contentEntries.typeId, typeId),
+      sql`${contentEntries.data} ->> ${f.name} = ${String(value)}`,
+    ];
+    if (excludeId) conds.push(ne(contentEntries.id, excludeId));
+    const [dup] = await tx
+      .select({ id: contentEntries.id })
+      .from(contentEntries)
+      .where(and(...conds))
+      .limit(1);
+    if (dup) {
+      throw new ValidationError([
+        `"${f.name}" must be unique; an entry with that value already exists`,
+      ]);
+    }
   }
 }
 
@@ -151,6 +191,7 @@ export async function createEntry(input: {
   const status = input.status ?? "draft";
 
   const entry = await db.transaction(async (tx) => {
+    await checkUnique(tx, type.id, type.fields, clean);
     const [entry] = await tx
       .insert(contentEntries)
       .values({
@@ -203,6 +244,7 @@ export async function updateEntry(input: {
     const validated = validateEntryData(type!.fields, input.data, {
       partial: true,
     });
+    await checkUnique(tx, entry.typeId, type!.fields, validated, entry.id);
     const merged = { ...entry.data, ...validated };
     const nextRevision = entry.revision + 1;
 

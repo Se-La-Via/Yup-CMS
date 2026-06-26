@@ -57,6 +57,8 @@ jobs:
       - run: npm run smoke:assets
       # Exercises the admin API: auth gating + human review approval over HTTP.
       - run: npm run smoke:admin
+      # Exercises unique field constraints on create and update.
+      - run: npm run smoke:unique
 
   s3:
     name: assets on S3 (MinIO)
