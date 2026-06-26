@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  check:
+    name: typecheck · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  integration:
+    name: migrations + demo on real Postgres
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: yup
+          POSTGRES_PASSWORD: yup
+          POSTGRES_DB: yup
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U yup -d yup"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://yup:yup@localhost:5432/yup
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Applies migrations, then runs the full end-to-end demo (content CRUD,
+      # revisions, and the review gate) against a real database.
+      - run: npm run db:migrate
+      - run: npm run seed

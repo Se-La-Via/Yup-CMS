@@ -9,6 +9,7 @@ import {
   boolean,
   timestamp,
   unique,
+  index,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -75,6 +76,8 @@ export const contentEntries = pgTable(
   (t) => ({
     // Slugs are unique within a content type, when present.
     slugPerType: unique("entries_slug_per_type").on(t.typeId, t.slug),
+    // Listing entries by type + status is the hottest read path.
+    byTypeStatus: index("entries_type_status").on(t.typeId, t.status),
   }),
 );
 
@@ -128,7 +131,11 @@ export const reviewRequests = pgTable("review_requests", {
   decisionNote: text("decision_note"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   decidedAt: timestamp("decided_at", { withTimezone: true }),
-});
+}, (t) => ({
+  // The approval queue is listed by status; the gate looks up open requests by entry.
+  byStatus: index("reviews_status").on(t.status),
+  byEntryStatus: index("reviews_entry_status").on(t.entryId, t.status),
+}));
 
 /**
  * Outbound webhook subscriptions. This is what makes Yup CMS a node in an
@@ -169,7 +176,10 @@ export const webhookDeliveries = pgTable("webhook_deliveries", {
   error: text("error"),
   durationMs: integer("duration_ms"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => ({
+  // The delivery log is inspected per webhook, newest first.
+  byWebhookCreated: index("deliveries_webhook_created").on(t.webhookId, t.createdAt),
+}));
 
 /**
  * API keys for the read API. Only the SHA-256 hash is stored — the raw key is

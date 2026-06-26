@@ -4,6 +4,7 @@
 > as naturally as a human clicks a mouse — with every change versioned and
 > attributed to whoever (or whatever) made it.
 
+[![CI](https://github.com/Se-La-Via/Yup-CMS/actions/workflows/ci.yml/badge.svg)](https://github.com/Se-La-Via/Yup-CMS/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## Why this exists
@@ -259,10 +260,17 @@ curl -H "Authorization: Bearer yup_..." \
 - ✅ REST read API with `reference` resolution.
 - ✅ API keys for the read API.
 - ✅ Docker Compose + setup wizard for easy self-hosting.
+- ✅ Spoof-proof attribution & unbypassable review gate (connection-bound principal).
+- ✅ CI (typecheck · tests · build · migrations on real Postgres), DB indexes, production image.
+- Webhook delivery retries (outbox pattern).
+- Media / asset handling.
 - GraphQL read layer alongside REST.
 - Admin GUI (secondary interface) over the same core.
 - Multi-tenant scoping & per-key rate limits.
-- Write auth for remote (non-stdio) MCP.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Security policy: [SECURITY.md](SECURITY.md).
 
 ## License
 

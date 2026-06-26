@@ -13,8 +13,11 @@
   },
   "scripts": {
     "setup": "tsx src/scripts/setup.ts",
+    "build": "tsc -p tsconfig.build.json",
     "mcp": "tsx src/mcp/server.ts",
     "api": "tsx src/api/server.ts",
+    "start:api": "node dist/api/server.js",
+    "start:migrate": "node dist/scripts/migrate.js",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/scripts/migrate.ts",

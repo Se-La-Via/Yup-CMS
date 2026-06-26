@@ -27,7 +27,7 @@ services:
   # One-shot: applies pending migrations, then exits.
   migrate:
     build: .
-    command: npm run db:migrate
+    command: node dist/scripts/migrate.js
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-yup}:${POSTGRES_PASSWORD:-yup}@db:5432/${POSTGRES_DB:-yup}
     depends_on:
@@ -37,7 +37,7 @@ services:
 
   api:
     build: .
-    command: npm run api
+    command: node dist/api/server.js
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-yup}:${POSTGRES_PASSWORD:-yup}@db:5432/${POSTGRES_DB:-yup}
       CMS_API_PORT: ${CMS_API_PORT:-3000}
