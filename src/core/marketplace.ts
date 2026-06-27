@@ -2,6 +2,7 @@ import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { marketplaceItems } from "../db/schema.js";
 import { NotFoundError } from "./content.js";
+import { signItem, verifyItem, verificationEnabled } from "./signing.js";
 
 /**
  * Plugin & theme marketplace — a registry of installable modules. Publishing
@@ -22,6 +23,9 @@ export interface PublishInput {
   homepage?: string;
   tags?: string[];
   verified?: boolean;
+  // Provide to preserve an existing signature (e.g. when syncing from a remote
+  // registry); omitted, the item is signed if a signing key is configured.
+  signature?: string | null;
 }
 
 export async function publishItem(input: PublishInput) {
@@ -33,35 +37,65 @@ export async function publishItem(input: PublishInput) {
   }
   if (!input.specifier) throw new Error("specifier is required");
 
-  // Re-publishing the same name updates the entry (idempotent).
+  // Sign on publish if a signing key is set and no signature was supplied.
+  const signature = input.signature ?? signItem(input);
+  const verified = signature
+    ? verificationEnabled()
+      ? verifyItem(input, signature)
+      : (input.verified ?? true)
+    : (input.verified ?? false);
+
+  const values = {
+    kind: input.kind,
+    specifier: input.specifier,
+    description: input.description,
+    version: input.version,
+    author: input.author,
+    homepage: input.homepage,
+    tags: input.tags ?? [],
+    verified,
+    signature: signature ?? null,
+  };
+
   const [item] = await db
     .insert(marketplaceItems)
-    .values({
-      kind: input.kind,
-      name: input.name,
-      specifier: input.specifier,
-      description: input.description,
-      version: input.version,
-      author: input.author,
-      homepage: input.homepage,
-      tags: input.tags ?? [],
-      verified: input.verified ?? false,
-    })
-    .onConflictDoUpdate({
-      target: marketplaceItems.name,
-      set: {
-        kind: input.kind,
-        specifier: input.specifier,
-        description: input.description,
-        version: input.version,
-        author: input.author,
-        homepage: input.homepage,
-        tags: input.tags ?? [],
-        verified: input.verified ?? false,
-      },
-    })
+    .values({ name: input.name, ...values })
+    .onConflictDoUpdate({ target: marketplaceItems.name, set: values })
     .returning();
   return item!;
+}
+
+/** Ensure an item is safe to install: when verification is on, its signature must verify. */
+export function assertInstallable(item: typeof marketplaceItems.$inferSelect): void {
+  if (verificationEnabled() && !verifyItem(item, item.signature)) {
+    throw new Error(`"${item.name}" failed signature verification — refusing to install`);
+  }
+}
+
+/**
+ * Import a remote registry (another Yup CMS's GET /marketplace). Verifies each
+ * item's signature when a public key is configured; unverifiable items are
+ * skipped. Returns counts.
+ */
+export async function syncFromRegistry(url: string): Promise<{ imported: number; skipped: number }> {
+  if (!/^https?:\/\//.test(url)) throw new Error("registry url must be http(s)");
+  const res = await fetch(url.replace(/\/$/, "") + "/marketplace", {
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`registry returned HTTP ${res.status}`);
+  const items = (await res.json()) as Array<PublishInput & { signature?: string | null }>;
+
+  let imported = 0;
+  let skipped = 0;
+  for (const it of items) {
+    if (verificationEnabled() && !verifyItem(it, it.signature)) {
+      skipped++;
+      continue;
+    }
+    await publishItem({ ...it, signature: it.signature ?? null });
+    imported++;
+  }
+  return { imported, skipped };
 }
 
 export async function listItems(

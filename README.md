@@ -245,7 +245,16 @@ itself.
   their field types/hooks/tools.
 - Seed the bundled examples with `npm run marketplace:seed`.
 
-Items carry a `verified` flag for curation; signed packages are a future step.
+### Signing & remote registries
+
+- **Signed packages.** A registry signs each item with an ed25519 key
+  (`npm run marketplace:keygen`). Set `CMS_REGISTRY_PRIVATE_KEY` to sign on
+  publish; set `CMS_REGISTRY_PUBLIC_KEY` on installers to **require a valid
+  signature** — installs of tampered/unsigned items are refused.
+- **Remote registries.** A registry is just another Yup CMS (its `/marketplace`
+  is public). Pull a catalog with `npm run marketplace:sync <url>`, the admin
+  `POST /api/marketplace/sync`, or the MCP `marketplace_sync` tool — signatures
+  are verified on import and forged items are skipped.
 
 ## Plugins (extend the core)
 
@@ -524,7 +533,8 @@ Storage backends are configured with `CMS_STORAGE_BACKEND`:
 - ✅ Themes & server-side rendering (optional HTML pages) + full editing GUI.
 - ✅ Admin copilot (AI assistant) + rules-based insights.
 - ✅ Plugin & theme marketplace (registry, publish, browse, one-click install).
-- Signed/verified marketplace packages and a hosted public registry.
+- ✅ Signed/verified marketplace packages + sync from remote registries.
+- A hosted public registry hub (a shared catalog any instance syncs from).
 
 ## Contributing
 

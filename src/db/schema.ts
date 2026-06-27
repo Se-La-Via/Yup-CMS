@@ -301,8 +301,10 @@ export const marketplaceItems = pgTable("marketplace_items", {
   author: text("author"),
   homepage: text("homepage"),
   tags: text("tags").array().notNull().default(sql`ARRAY[]::text[]`),
-  // Curated/trust flag. Full package signing is a future step.
+  // Curated/trust flag — set when a valid signature is present.
   verified: boolean("verified").notNull().default(false),
+  // ed25519 signature (base64) over the item's canonical metadata.
+  signature: text("signature"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -46,6 +46,8 @@
     "demo": "tsx src/scripts/demo.ts",
     "plugin:add": "tsx src/scripts/plugin-add.ts",
     "marketplace:seed": "tsx src/scripts/marketplace-seed.ts",
+    "marketplace:keygen": "tsx src/scripts/marketplace-keygen.ts",
+    "marketplace:sync": "tsx src/scripts/marketplace-sync.ts",
     "webhook:listen": "tsx src/scripts/webhook-listener.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"

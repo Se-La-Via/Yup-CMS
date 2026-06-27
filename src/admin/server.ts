@@ -169,6 +169,7 @@ export function createAdminServer() {
       if (method === "POST" && path[0] === "marketplace" && path[1] === "install") {
         const body = await readJsonBody(req);
         const item = await marketplace.getItem(body.name as string);
+        marketplace.assertInstallable(item); // verify signature if verification is on
         const plugins = await enablePlugin(item.specifier);
         return json(res, 200, {
           installed: true,
@@ -177,6 +178,10 @@ export function createAdminServer() {
           plugins,
           note: "Restart the affected service to load it.",
         });
+      }
+      if (method === "POST" && path[0] === "marketplace" && path[1] === "sync") {
+        const body = await readJsonBody(req);
+        return json(res, 200, await marketplace.syncFromRegistry(body.url as string));
       }
       if (method === "POST" && path[0] === "marketplace" && path.length === 1) {
         const body = await readJsonBody(req);

@@ -550,6 +550,17 @@ server.registerTool(
   tool(async (args) => marketplace.publishItem(args)),
 );
 
+server.registerTool(
+  "marketplace_sync",
+  {
+    title: "Sync marketplace registry",
+    description:
+      "Import items from a remote registry (another Yup CMS's GET /marketplace). Signatures are verified when a public key is configured.",
+    inputSchema: { url: z.string().describe("base URL of the remote registry") },
+  },
+  tool(async ({ url }) => marketplace.syncFromRegistry(url)),
+);
+
 // --- Tenants (workspaces) --------------------------------------------------
 
 server.registerTool(
