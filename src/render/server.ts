@@ -54,6 +54,7 @@ export function createRenderServer() {
       }
 
       if (seg.length === 1) {
+        const type = await content.getContentType(seg[0]!, tenantId);
         const entries = await read.list({
           type: seg[0]!,
           status: "published",
@@ -66,10 +67,12 @@ export function createRenderServer() {
           tenant: tenantId,
           type: seg[0]!,
           entries: entries.map((e) => ({ slug: e.slug, data: e.data })),
+          fields: type.fields,
         }));
       }
 
       if (seg.length === 2) {
+        const type = await content.getContentType(seg[0]!, tenantId);
         const entry = await read.getBySlug({
           type: seg[0]!,
           slug: seg[1]!,
@@ -82,6 +85,7 @@ export function createRenderServer() {
           tenant: tenantId,
           type: seg[0]!,
           entry: { slug: entry.slug, data: entry.data },
+          fields: type.fields,
         }));
       }
 

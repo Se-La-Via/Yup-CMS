@@ -13,7 +13,10 @@ async function main() {
     await createContentType({
       name: "render_post",
       displayName: "Render Post",
-      fields: [{ name: "title", type: "text", required: true }],
+      fields: [
+        { name: "title", type: "text", required: true },
+        { name: "body", type: "richtext" },
+      ],
     });
   } catch {
     /* may exist on a reused DB */
@@ -22,7 +25,7 @@ async function main() {
   const entry = await createEntry({
     type: "render_post",
     slug,
-    data: { title: "Render Me Please" },
+    data: { title: "Render Me Please", body: "Hello **bold** world" },
     author: { type: "human", id: "smoke" },
   });
   await setEntryStatus({ id: entry.id, status: "published", author: { type: "human", id: "smoke" } });
@@ -43,8 +46,14 @@ async function main() {
   const missing = await fetch(`${base}/render_post/does-not-exist`);
   assert.equal(missing.status, 404, "missing entry returns 404");
 
+  // Rich theme renders richtext markdown as HTML.
+  process.env.CMS_THEME = "rich";
+  const rich = await (await fetch(`${base}/render_post/${slug}`)).text();
+  assert.match(rich, /<strong>bold<\/strong>/, "rich theme renders richtext as HTML");
+  assert.doesNotMatch(rich, /\*\*bold\*\*/, "raw markdown is not shown");
+
   server.close();
-  console.log("✓ rendering verified: list + entry pages + 404");
+  console.log("✓ rendering verified: default + rich theme (richtext as HTML) + 404");
   process.exit(0);
 }
 

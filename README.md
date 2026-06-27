@@ -219,6 +219,14 @@ register themselves on load (and can ship as plugins). The render server reads
 only published content, resolves references, and is fully optional — your own
 front-end consuming the REST/GraphQL API remains first-class.
 
+Two themes ship in the box:
+
+- **`default`** — minimal and safe; escapes every value.
+- **`rich`** (`CMS_THEME=rich`) — **field-aware templates**: `richtext` renders
+  as HTML through a built-in **safe Markdown** renderer (raw HTML is escaped
+  first and link hrefs are allow-listed — no XSS), and dates/booleans/
+  references/JSON render appropriately, with nicer typography.
+
 ## Plugins (extend the core)
 
 Yup CMS is extensible without forking. A **plugin** is a module that contributes:
