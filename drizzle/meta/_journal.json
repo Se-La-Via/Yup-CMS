@@ -29,6 +29,13 @@
       "when": 1782516628962,
       "tag": "0003_assets",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1782519214817,
+      "tag": "0004_scheduling",
+      "breakpoints": true
     }
   ]
 }

@@ -61,6 +61,8 @@ jobs:
       - run: npm run smoke:unique
       # Exercises the GraphQL read layer (public query + non-published gating).
       - run: npm run smoke:graphql
+      # Exercises scheduled publishing: schedule → due → published.
+      - run: npm run smoke:schedule
 
   s3:
     name: assets on S3 (MinIO)

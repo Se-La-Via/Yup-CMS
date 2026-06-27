@@ -26,7 +26,13 @@ import { NotFoundError, ValidationError } from "../core/content.js";
  */
 
 const port = Number(process.env.CMS_API_PORT ?? 3000);
-const VALID_STATUS = new Set(["draft", "pending_review", "published", "archived"]);
+const VALID_STATUS = new Set([
+  "draft",
+  "scheduled",
+  "pending_review",
+  "published",
+  "archived",
+]);
 
 function send(
   res: ServerResponse,

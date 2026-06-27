@@ -125,7 +125,7 @@ src/
   db/        schema.ts (7 tables) · client.ts · migrate via drizzle-orm
   core/      validation · content (writes+revisions) · events (outbox+worker)
              · policy · backoff · read · graphql · ratelimit · auth · assets · storage
-  mcp/       server.ts — 25 MCP tools (the write/control plane for agents)
+  mcp/       server.ts — 27 MCP tools (the write/control plane for agents)
   api/       server.ts — read-only HTTP API + asset serving (the public surface)
   admin/     server.ts + dashboard — human admin UI + admin API (oversight)
   scripts/   setup · migrate · worker · seed · smoke-{webhooks,assets,admin} · webhook-listener
@@ -143,6 +143,7 @@ Dockerfile · docker-compose.yml
 | `create_entry` / `update_entry` | write content (partial updates) |
 | `delete_entry` | permanently delete an entry (hard delete) |
 | `set_entry_status` | publish / unpublish / archive |
+| `schedule_publish` / `cancel_schedule` | publish automatically at a future time |
 | `get_entry_history` | full audit trail |
 | `revert_entry` | restore a previous revision |
 | `list_reviews` / `approve_review` / `reject_review` | the human approval queue (review gate) |
@@ -193,6 +194,15 @@ Attribution is only meaningful if it can't be forged, so identity is bound to th
 
 The upshot: an agent cannot publish gated content, cannot clear its own review,
 and cannot write a change into the audit trail under someone else's name.
+
+## Scheduled publishing
+
+Schedule an entry to go live later with `schedule_publish(id, publishAt)` (ISO
+8601). The entry moves to a `scheduled` status, and the **worker** publishes it
+once the time passes — emitting `entry.published` like any other publish, so
+downstream automations fire normally. `cancel_schedule` returns it to draft.
+Agents cannot schedule approval-gated types (same rule as the review gate). The
+worker must be running (it's the `worker` service in docker-compose).
 
 ## Events & automation (n8n)
 
@@ -370,6 +380,7 @@ Storage backends are configured with `CMS_STORAGE_BACKEND`:
 - ✅ Admin dashboard for human oversight (review queue, publish, webhooks, assets).
 - ✅ Unique field constraints.
 - ✅ GraphQL read layer alongside REST.
+- ✅ Scheduled publishing (publish at a future time via the worker).
 - Multi-tenant scoping; distributed (Redis-backed) rate limiting.
 
 ## Contributing

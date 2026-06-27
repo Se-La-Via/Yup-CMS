@@ -21,6 +21,7 @@ export const authorType = pgEnum("author_type", ["human", "agent", "system"]);
 
 export const entryStatus = pgEnum("entry_status", [
   "draft",
+  "scheduled",
   "pending_review",
   "published",
   "archived",
@@ -70,6 +71,8 @@ export const contentEntries = pgTable(
     data: jsonb("data").$type<Record<string, unknown>>().notNull().default({}),
     status: entryStatus("status").notNull().default("draft"),
     revision: integer("revision").notNull().default(1),
+    // When set on a "scheduled" entry, the worker publishes it once this passes.
+    publishAt: timestamp("publish_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -78,6 +81,8 @@ export const contentEntries = pgTable(
     slugPerType: unique("entries_slug_per_type").on(t.typeId, t.slug),
     // Listing entries by type + status is the hottest read path.
     byTypeStatus: index("entries_type_status").on(t.typeId, t.status),
+    // The worker polls for scheduled entries that are due.
+    dueSchedule: index("entries_due_schedule").on(t.status, t.publishAt),
   }),
 );
 

@@ -11,7 +11,12 @@ import { getContentType, getEntry, NotFoundError } from "./content.js";
  * or app consumes, as opposed to the MCP tools that agents write through.
  */
 
-export type Status = "draft" | "pending_review" | "published" | "archived";
+export type Status =
+  | "draft"
+  | "scheduled"
+  | "pending_review"
+  | "published"
+  | "archived";
 
 export async function list(input: {
   type: string;

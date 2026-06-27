@@ -27,6 +27,7 @@
     "smoke:admin": "tsx src/scripts/smoke-admin.ts",
     "smoke:unique": "tsx src/scripts/smoke-unique.ts",
     "smoke:graphql": "tsx src/scripts/smoke-graphql.ts",
+    "smoke:schedule": "tsx src/scripts/smoke-schedule.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/scripts/migrate.ts",

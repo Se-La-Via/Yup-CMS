@@ -136,7 +136,9 @@ server.registerTool(
     description: "List entries of a given content type, optionally filtered by status.",
     inputSchema: {
       type: z.string().describe("content type machine name"),
-      status: z.enum(["draft", "published", "archived"]).optional(),
+      status: z
+        .enum(["draft", "scheduled", "pending_review", "published", "archived"])
+        .optional(),
       limit: z.number().int().positive().max(200).optional(),
       offset: z.number().int().nonnegative().optional(),
     },
@@ -232,6 +234,35 @@ server.registerTool(
   },
   tool(async ({ note, ...args }) =>
     content.revertEntry({ ...args, author: principalAuthor(note) }),
+  ),
+);
+
+server.registerTool(
+  "schedule_publish",
+  {
+    title: "Schedule publish",
+    description:
+      "Schedule an entry to publish automatically at a future time (ISO 8601). The worker publishes it when due. Agents cannot schedule approval-gated types.",
+    inputSchema: {
+      id: z.string(),
+      publishAt: z.string().describe("ISO 8601 date-time, e.g. 2026-07-01T09:00:00Z"),
+      note: noteSchema,
+    },
+  },
+  tool(async ({ note, ...args }) =>
+    content.schedulePublish({ ...args, author: principalAuthor(note) }),
+  ),
+);
+
+server.registerTool(
+  "cancel_schedule",
+  {
+    title: "Cancel schedule",
+    description: "Cancel a scheduled publish, returning the entry to draft.",
+    inputSchema: { id: z.string(), note: noteSchema },
+  },
+  tool(async ({ note, ...args }) =>
+    content.cancelSchedule({ ...args, author: principalAuthor(note) }),
   ),
 );
 

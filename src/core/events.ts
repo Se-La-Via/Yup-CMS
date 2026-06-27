@@ -15,6 +15,7 @@ export const EVENT_TYPES = [
   "entry.unpublished",
   "entry.archived",
   "entry.deleted",
+  "entry.scheduled",
   "entry.reverted",
   "entry.review_requested",
   "review.approved",

@@ -7,6 +7,7 @@
  */
 import "dotenv/config";
 import { tick } from "../core/events.js";
+import { publishScheduledDue } from "../core/content.js";
 
 const INTERVAL_MS = Number(process.env.CMS_WORKER_INTERVAL_MS ?? 2000);
 let running = true;
@@ -18,10 +19,13 @@ async function main() {
   console.error(`Yup CMS webhook worker started (interval ${INTERVAL_MS}ms)`);
   while (running) {
     try {
+      // Publish due scheduled entries first (this enqueues events), then
+      // dispatch/deliver webhooks.
+      const published = await publishScheduledDue();
       const r = await tick();
-      if (r.dispatched || r.delivered || r.retried || r.failed) {
+      if (published || r.dispatched || r.delivered || r.retried || r.failed) {
         console.error(
-          `[worker] dispatched=${r.dispatched} delivered=${r.delivered} retried=${r.retried} failed=${r.failed}`,
+          `[worker] scheduled-published=${published} dispatched=${r.dispatched} delivered=${r.delivered} retried=${r.retried} failed=${r.failed}`,
         );
       }
     } catch (e) {

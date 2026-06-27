@@ -1,4 +1,4 @@
-import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { and, desc, eq, lte, ne, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import {
   contentTypes,
@@ -143,7 +143,7 @@ export async function createContentType(input: {
 
 export async function listEntries(input: {
   type: string;
-  status?: "draft" | "published" | "archived";
+  status?: "draft" | "scheduled" | "pending_review" | "published" | "archived";
   limit?: number;
   offset?: number;
 }) {
@@ -356,6 +356,136 @@ export async function deleteEntry(input: {
 
     return { deleted: true, id: entry.id };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Scheduled publishing
+// ---------------------------------------------------------------------------
+
+/** Schedule an entry to publish automatically at a future time. */
+export async function schedulePublish(input: {
+  id: string;
+  publishAt: string;
+  author?: Partial<Author>;
+}) {
+  const author = defaultAuthor(input.author);
+  const when = new Date(input.publishAt);
+  if (Number.isNaN(when.getTime())) {
+    throw new ValidationError(["publishAt must be an ISO date-time string"]);
+  }
+
+  const entry = await getEntry(input.id);
+  const [type] = await db
+    .select()
+    .from(contentTypes)
+    .where(eq(contentTypes.id, entry.typeId));
+  // Respect the review gate: an agent cannot schedule approval-gated content.
+  if (type?.requireApproval && author.type === "agent") {
+    throw new ValidationError([
+      "agents cannot schedule approval-gated content; request a review instead",
+    ]);
+  }
+
+  return db.transaction(async (tx) => {
+    const nextRevision = entry.revision + 1;
+    const [updated] = await tx
+      .update(contentEntries)
+      .set({ status: "scheduled", publishAt: when, revision: nextRevision, updatedAt: sql`now()` })
+      .where(eq(contentEntries.id, entry.id))
+      .returning();
+    await tx.insert(contentRevisions).values({
+      entryId: entry.id,
+      revision: nextRevision,
+      data: entry.data,
+      status: "scheduled",
+      action: "schedule",
+      authorType: author.type,
+      authorId: author.id,
+      note: author.note,
+    });
+    await recordEvent(tx, "entry.scheduled", {
+      entry: updated!,
+      publishAt: when.toISOString(),
+      author,
+    });
+    return updated!;
+  });
+}
+
+/** Cancel a scheduled publish, returning the entry to draft. */
+export async function cancelSchedule(input: { id: string; author?: Partial<Author> }) {
+  const author = defaultAuthor(input.author);
+  return db.transaction(async (tx) => {
+    const [entry] = await tx
+      .select()
+      .from(contentEntries)
+      .where(eq(contentEntries.id, input.id));
+    if (!entry) throw new NotFoundError(`entry "${input.id}" not found`);
+    if (entry.status !== "scheduled") {
+      throw new ValidationError(["entry is not scheduled"]);
+    }
+    const nextRevision = entry.revision + 1;
+    const [updated] = await tx
+      .update(contentEntries)
+      .set({ status: "draft", publishAt: null, revision: nextRevision, updatedAt: sql`now()` })
+      .where(eq(contentEntries.id, entry.id))
+      .returning();
+    await tx.insert(contentRevisions).values({
+      entryId: entry.id,
+      revision: nextRevision,
+      data: entry.data,
+      status: "draft",
+      action: "unschedule",
+      authorType: author.type,
+      authorId: author.id,
+      note: author.note,
+    });
+    await recordEvent(tx, "entry.updated", { entry: updated!, author });
+    return updated!;
+  });
+}
+
+/**
+ * Publish any scheduled entries whose time has come. Called by the worker.
+ * Returns how many were published.
+ */
+export async function publishScheduledDue(limit = 100): Promise<number> {
+  const due = await db
+    .select()
+    .from(contentEntries)
+    .where(
+      and(
+        eq(contentEntries.status, "scheduled"),
+        lte(contentEntries.publishAt, sql`now()`),
+      ),
+    )
+    .limit(limit);
+
+  for (const entry of due) {
+    await db.transaction(async (tx) => {
+      const nextRevision = entry.revision + 1;
+      const [updated] = await tx
+        .update(contentEntries)
+        .set({ status: "published", publishAt: null, revision: nextRevision, updatedAt: sql`now()` })
+        .where(eq(contentEntries.id, entry.id))
+        .returning();
+      await tx.insert(contentRevisions).values({
+        entryId: entry.id,
+        revision: nextRevision,
+        data: entry.data,
+        status: "published",
+        action: "publish:scheduled",
+        authorType: "system",
+        authorId: "scheduler",
+        note: "Scheduled publish",
+      });
+      await recordEvent(tx, "entry.published", {
+        entry: updated!,
+        author: { type: "system", id: "scheduler" },
+      });
+    });
+  }
+  return due.length;
 }
 
 /** Restore an entry's data to a previous revision, recorded as a new revision. */
