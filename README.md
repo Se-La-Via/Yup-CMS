@@ -400,7 +400,8 @@ is a single dependency-free page where a human reviewer can:
 
 - see the **pending review queue** and **approve/reject** — the key
   human-in-the-loop action behind the review gate;
-- browse content by type and **publish/unpublish/delete** entries;
+- **create and edit entries** with forms generated from the content type's
+  fields, and **publish/unpublish/delete** them;
 - inspect webhooks and their delivery log, list assets, and view tenants.
 
 Every admin action requires an **`admin`-scoped API key** (mint one with the MCP

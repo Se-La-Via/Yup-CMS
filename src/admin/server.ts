@@ -135,6 +135,49 @@ export function createAdminServer() {
       }
 
       // --- actions ---
+      if (method === "POST" && path[0] === "types" && path.length === 1) {
+        const body = await readJsonBody(req);
+        return json(
+          res,
+          200,
+          await content.createContentType({
+            name: body.name as string,
+            displayName: body.displayName as string,
+            description: body.description as string | undefined,
+            fields: (body.fields as never) ?? [],
+            requireApproval: body.requireApproval as boolean | undefined,
+            tenantId,
+          }),
+        );
+      }
+      if (method === "POST" && path[0] === "entries" && path.length === 1) {
+        const body = await readJsonBody(req);
+        return json(
+          res,
+          200,
+          await content.createEntry({
+            type: body.type as string,
+            data: (body.data as Record<string, unknown>) ?? {},
+            slug: body.slug as string | undefined,
+            status: body.status as "draft" | "published" | undefined,
+            author: principal,
+            tenantId,
+          }),
+        );
+      }
+      if (method === "POST" && path[0] === "entries" && path.length === 2) {
+        const body = await readJsonBody(req);
+        return json(
+          res,
+          200,
+          await content.updateEntry({
+            id: path[1]!,
+            data: (body.data as Record<string, unknown>) ?? {},
+            author: principal,
+            tenantId,
+          }),
+        );
+      }
       if (method === "POST" && path[0] === "reviews" && path[2] === "approve") {
         const body = await readJsonBody(req);
         return json(

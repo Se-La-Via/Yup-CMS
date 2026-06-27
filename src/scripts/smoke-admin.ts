@@ -65,8 +65,34 @@ async function main() {
   const after = await getEntry(entry.id);
   assert.equal(after.status, "published", "entry should be published after approval");
 
+  // Content editing through the admin API: create a type, an entry, update it.
+  await fetch(`${base}/api/types`, {
+    method: "POST",
+    headers: h(admin),
+    body: JSON.stringify({
+      name: "admin_edit",
+      displayName: "Admin Edit",
+      fields: [{ name: "title", type: "text", required: true }],
+    }),
+  }); // 200, or 400 if it already exists on a reused DB — either is fine
+  const createdRes = await fetch(`${base}/api/entries`, {
+    method: "POST",
+    headers: h(admin),
+    body: JSON.stringify({ type: "admin_edit", data: { title: "v1" } }),
+  });
+  assert.equal(createdRes.status, 200, "admin create entry succeeds");
+  const created = (await createdRes.json()) as { id: string };
+  const updRes = await fetch(`${base}/api/entries/${created.id}`, {
+    method: "POST",
+    headers: h(admin),
+    body: JSON.stringify({ data: { title: "v2" } }),
+  });
+  assert.equal(updRes.status, 200, "admin update entry succeeds");
+  const edited = await getEntry(created.id);
+  assert.equal((edited.data as { title: string }).title, "v2", "edit persisted");
+
   server.close();
-  console.log("✓ admin API verified: auth gating + human review approval");
+  console.log("✓ admin API verified: review approval + content create/edit");
   process.exit(0);
 }
 

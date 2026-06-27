@@ -53,6 +53,7 @@ export const DASHBOARD_HTML = `<!doctype html>
 const $ = (s) => document.querySelector(s);
 let KEY = localStorage.getItem("yup_admin_key") || "";
 let TAB = "reviews";
+let TYPES = [];
 $("#key").value = KEY;
 
 function saveKey() {
@@ -124,12 +125,14 @@ async function decide(id, action) {
 async function renderContent() {
   showErr("");
   try {
-    const types = await api("/types");
-    const opts = types.map((t) => "<option value='" + esc(t.name) + "'>" + esc(t.displayName) + "</option>").join("");
-    $("#main").innerHTML = "<p>Type: <select id='type' onchange='loadEntries()'>" + opts + "</select></p><div id='entries'></div>";
-    if (types.length) loadEntries();
+    TYPES = await api("/types");
+    const opts = TYPES.map((t) => "<option value='" + esc(t.name) + "'>" + esc(t.displayName) + "</option>").join("");
+    $("#main").innerHTML = "<p>Type: <select id='type' onchange='loadEntries()'>" + opts +
+      "</select> <button class='btn go' onclick='openEditor()'>+ New entry</button></p><div id='entries'></div>";
+    if (TYPES.length) loadEntries();
   } catch (e) { showErr(e.message); }
 }
+function currentType() { return TYPES.find((t) => t.name === $("#type").value); }
 async function loadEntries() {
   const type = $("#type").value;
   try {
@@ -137,11 +140,78 @@ async function loadEntries() {
     $("#entries").innerHTML = "<table><tr><th>Slug</th><th>Status</th><th>Rev</th><th>Updated</th><th></th></tr>" +
       rows.map((e) => "<tr><td>" + esc(e.slug) + "</td><td><span class=pill>" + esc(e.status) + "</span></td><td>" + e.revision +
         "</td><td class=muted>" + esc(e.updatedAt) + "</td><td>" +
+        "<button class='btn' onclick=\\"openEditor('" + e.id + "')\\">Edit</button> " +
         (e.status === "published"
           ? "<button class='btn' onclick=\\"setStatus('" + e.id + "','draft')\\">Unpublish</button>"
           : "<button class='btn go' onclick=\\"setStatus('" + e.id + "','published')\\">Publish</button>") +
         " <button class='btn no' onclick=\\"del('" + e.id + "')\\">Delete</button></td></tr>").join("") +
       "</table>";
+  } catch (e) { showErr(e.message); }
+}
+
+function fieldInput(f, value) {
+  const id = "fld_" + f.name;
+  const v = value === undefined || value === null ? "" : value;
+  if (f.type === "boolean")
+    return "<input type=checkbox id='" + id + "'" + (v ? " checked" : "") + ">";
+  if (f.type === "number")
+    return "<input type=number id='" + id + "' value='" + esc(v) + "'>";
+  if (f.type === "date")
+    return "<input id='" + id + "' value='" + esc(v) + "' placeholder='ISO date'>";
+  if (f.type === "select")
+    return "<select id='" + id + "'>" + (f.options || []).map((o) =>
+      "<option" + (o === v ? " selected" : "") + ">" + esc(o) + "</option>").join("") + "</select>";
+  if (f.type === "richtext" || f.type === "json" || f.localized) {
+    const text = typeof v === "object" ? JSON.stringify(v) : v;
+    return "<textarea id='" + id + "' rows=3 style='width:100%'>" + esc(text) + "</textarea>";
+  }
+  return "<input id='" + id + "' value='" + esc(v) + "' style='width:100%'>";
+}
+
+async function openEditor(id) {
+  showErr("");
+  const type = currentType();
+  if (!type) { showErr("select a type first"); return; }
+  let entry = null;
+  if (id) {
+    try { entry = (await api("/entries/" + id)).entry; } catch (e) { showErr(e.message); return; }
+  }
+  const data = entry ? entry.data : {};
+  const rows = type.fields.map((f) =>
+    "<tr><th style='text-align:right'>" + esc(f.name) + (f.required ? " *" : "") +
+    "<br><span class=muted>" + esc(f.type) + (f.localized ? " · i18n" : "") + "</span></th><td>" +
+    fieldInput(f, data[f.name]) + "</td></tr>").join("");
+  $("#main").innerHTML =
+    "<h3>" + (id ? "Edit" : "New") + " " + esc(type.displayName) + "</h3>" +
+    (id ? "" : "<p>Slug: <input id='fld__slug'></p>") +
+    "<table>" + rows + "</table>" +
+    "<p><button class='btn go' onclick=\\"saveEntry(" + (id ? "'" + id + "'" : "null") + ")\\">Save</button> " +
+    "<button class='btn' onclick='renderContent()'>Cancel</button></p>";
+}
+
+async function saveEntry(id) {
+  const type = currentType();
+  const data = {};
+  try {
+    for (const f of type.fields) {
+      const el = document.getElementById("fld_" + f.name);
+      if (!el) continue;
+      if (f.type === "boolean") { data[f.name] = el.checked; continue; }
+      let raw = el.value;
+      if (raw === "" || raw === undefined) continue;
+      if (f.type === "number") data[f.name] = Number(raw);
+      else if (f.type === "json" || f.localized) data[f.name] = JSON.parse(raw);
+      else data[f.name] = raw;
+    }
+  } catch (e) { showErr("invalid JSON in a field: " + e.message); return; }
+  try {
+    if (id) {
+      await api("/entries/" + id, { method: "POST", body: JSON.stringify({ data }) });
+    } else {
+      const slugEl = document.getElementById("fld__slug");
+      await api("/entries", { method: "POST", body: JSON.stringify({ type: type.name, slug: slugEl && slugEl.value || undefined, data }) });
+    }
+    renderContent();
   } catch (e) { showErr(e.message); }
 }
 async function setStatus(id, status) {
