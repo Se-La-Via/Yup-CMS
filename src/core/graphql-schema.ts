@@ -39,9 +39,9 @@ const SDL = /* GraphQL */ `
   type Query {
     contentTypes: [ContentType!]!
     contentType(name: String!): ContentType
-    entries(type: String!, status: String, limit: Int, offset: Int): [Entry!]!
-    entry(id: ID!): Entry
-    entryBySlug(type: String!, slug: String!, status: String): Entry
+    entries(type: String!, status: String, limit: Int, offset: Int, locale: String): [Entry!]!
+    entry(id: ID!, locale: String): Entry
+    entryBySlug(type: String!, slug: String!, status: String, locale: String): Entry
     search(q: String!, type: String, status: String, limit: Int): [Entry!]!
     assets(limit: Int): [Asset!]!
   }

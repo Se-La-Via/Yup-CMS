@@ -39,6 +39,26 @@ export function validateEntryData(
       }
     }
 
+    // Localized fields store a { locale: value } map; validate each locale value.
+    if (field.localized) {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        issues.push(`"${field.name}": localized value must be an object of locale → value`);
+        continue;
+      }
+      const map = value as Record<string, unknown>;
+      let ok = true;
+      for (const [loc, lv] of Object.entries(map)) {
+        const te = checkType(field, lv);
+        const ce = te ? null : checkConstraints(field, lv);
+        if (te || ce) {
+          issues.push(`"${field.name}" [${loc}]: ${te ?? ce}`);
+          ok = false;
+        }
+      }
+      if (ok) clean[field.name] = map;
+      continue;
+    }
+
     const typeErr = checkType(field, value);
     if (typeErr) {
       issues.push(`"${field.name}": ${typeErr}`);
@@ -163,7 +183,8 @@ export function validateFieldDefs(fields: FieldDef[]): void {
       }
     }
     // A default, if given, must itself satisfy the field's type and constraints.
-    if (f.default !== undefined) {
+    // (Localized defaults are locale→value maps, validated at write time.)
+    if (f.default !== undefined && !f.localized) {
       const typeErr = checkType(f, f.default);
       const consErr = typeErr ? null : checkConstraints(f, f.default);
       if (typeErr || consErr) {

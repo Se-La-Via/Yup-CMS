@@ -209,7 +209,11 @@ const server = createServer(async (req, res) => {
 
     // /entries/:id
     if (seg[0] === "entries" && seg.length === 2) {
-      return send(res, 200, await read.getById({ id: seg[1]!, resolve, tenantId }));
+      return send(
+        res,
+        200,
+        await read.getById({ id: seg[1]!, resolve, locale: q.get("locale") ?? undefined, tenantId }),
+      );
     }
 
     // /assets — list metadata; /assets/:id — stream the bytes
@@ -257,6 +261,7 @@ const server = createServer(async (req, res) => {
           limit: num(q.get("limit")),
           offset: num(q.get("offset")),
           resolve,
+          locale: q.get("locale") ?? undefined,
           tenantId,
         }),
       );
@@ -265,7 +270,14 @@ const server = createServer(async (req, res) => {
       return send(
         res,
         200,
-        await read.getBySlug({ type: seg[1]!, slug: seg[2]!, status, resolve, tenantId }),
+        await read.getBySlug({
+          type: seg[1]!,
+          slug: seg[2]!,
+          status,
+          resolve,
+          locale: q.get("locale") ?? undefined,
+          tenantId,
+        }),
       );
     }
 

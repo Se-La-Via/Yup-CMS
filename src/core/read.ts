@@ -21,6 +21,26 @@ export type Status =
   | "published"
   | "archived";
 
+const DEFAULT_LOCALE = process.env.CMS_DEFAULT_LOCALE ?? "en";
+
+/** Flatten localized ({ locale: value }) fields to a single locale, with fallback. */
+function localizeData(
+  fields: FieldDef[],
+  data: Record<string, unknown>,
+  locale: string,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...data };
+  for (const f of fields) {
+    if (!f.localized) continue;
+    const v = out[f.name];
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      const m = v as Record<string, unknown>;
+      out[f.name] = m[locale] ?? m[DEFAULT_LOCALE] ?? Object.values(m)[0] ?? null;
+    }
+  }
+  return out;
+}
+
 export async function list(input: {
   type: string;
   status?: Status;
@@ -28,6 +48,7 @@ export async function list(input: {
   limit?: number;
   offset?: number;
   resolve?: boolean;
+  locale?: string;
   tenantId?: string;
 }) {
   const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
@@ -47,12 +68,15 @@ export async function list(input: {
     .limit(input.limit ?? 50)
     .offset(input.offset ?? 0);
 
-  if (!input.resolve) return rows;
+  if (!input.resolve && !input.locale) return rows;
   return Promise.all(
-    rows.map(async (r) => ({
-      ...r,
-      data: await resolveRefs(type.fields, r.data, tenantId),
-    })),
+    rows.map(async (r) => {
+      let data = input.resolve
+        ? await resolveRefs(type.fields, r.data, tenantId)
+        : r.data;
+      if (input.locale) data = localizeData(type.fields, data, input.locale);
+      return { ...r, data };
+    }),
   );
 }
 
@@ -61,6 +85,7 @@ export async function getBySlug(input: {
   slug: string;
   status?: Status;
   resolve?: boolean;
+  locale?: string;
   tenantId?: string;
 }) {
   const [entry] = await list({ ...input, slug: input.slug, limit: 1 });
@@ -107,18 +132,23 @@ export async function search(input: {
 export async function getById(input: {
   id: string;
   resolve?: boolean;
+  locale?: string;
   tenantId?: string;
 }) {
   const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
   const entry = await getEntry(input.id, tenantId);
-  if (!input.resolve) return entry;
+  if (!input.resolve && !input.locale) return entry;
 
   const [type] = await db
     .select()
     .from(contentTypes)
     .where(eq(contentTypes.id, entry.typeId));
   if (!type) return entry;
-  return { ...entry, data: await resolveRefs(type.fields, entry.data, tenantId) };
+  let data = input.resolve
+    ? await resolveRefs(type.fields, entry.data, tenantId)
+    : entry.data;
+  if (input.locale) data = localizeData(type.fields, data, input.locale);
+  return { ...entry, data };
 }
 
 /**

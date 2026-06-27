@@ -317,4 +317,6 @@ export interface FieldDef {
   pattern?: string;
   // Value must be unique among entries of this type (best-effort, checked on write).
   unique?: boolean;
+  // When true, the value is a { locale: value } map; reads flatten it to a locale.
+  localized?: boolean;
 }

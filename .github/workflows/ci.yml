@@ -67,6 +67,8 @@ jobs:
       - run: npm run smoke:tenant
       # Exercises full-text search.
       - run: npm run smoke:search
+      # Exercises localized fields (locale resolution + fallback).
+      - run: npm run smoke:i18n
 
   ratelimit-redis:
     name: rate limiter on Redis

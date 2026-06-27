@@ -61,7 +61,7 @@ const root = {
     content.getContentType(name, ctx.tenantId).catch(() => null),
 
   entries: async (
-    args: { type: string; status?: string; limit?: number; offset?: number },
+    args: { type: string; status?: string; limit?: number; offset?: number; locale?: string },
     ctx: GraphQLContext,
   ) => {
     requireForStatus(args.status, ctx);
@@ -70,21 +70,22 @@ const root = {
       status: (args.status as read.Status) ?? "published",
       limit: args.limit,
       offset: args.offset,
+      locale: args.locale,
       tenantId: ctx.tenantId,
     });
     return rows.map((r) => mapEntry(r, args.type));
   },
 
-  entry: async ({ id }: { id: string }, ctx: GraphQLContext) => {
+  entry: async ({ id, locale }: { id: string; locale?: string }, ctx: GraphQLContext) => {
     // A by-id lookup can return any status, so it is always privileged.
     requireReadAll(ctx);
-    const e = await read.getById({ id, tenantId: ctx.tenantId }).catch(() => null);
+    const e = await read.getById({ id, locale, tenantId: ctx.tenantId }).catch(() => null);
     if (!e) return null;
     return mapEntry(e, await typeNameOf(e.typeId));
   },
 
   entryBySlug: async (
-    args: { type: string; slug: string; status?: string },
+    args: { type: string; slug: string; status?: string; locale?: string },
     ctx: GraphQLContext,
   ) => {
     requireForStatus(args.status, ctx);
@@ -93,6 +94,7 @@ const root = {
         type: args.type,
         slug: args.slug,
         status: (args.status as read.Status) ?? "published",
+        locale: args.locale,
         tenantId: ctx.tenantId,
       })
       .catch(() => null);

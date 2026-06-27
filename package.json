@@ -30,6 +30,7 @@
     "smoke:schedule": "tsx src/scripts/smoke-schedule.ts",
     "smoke:tenant": "tsx src/scripts/smoke-tenant.ts",
     "smoke:search": "tsx src/scripts/smoke-search.ts",
+    "smoke:i18n": "tsx src/scripts/smoke-i18n.ts",
     "smoke:ratelimit-redis": "tsx src/scripts/smoke-ratelimit-redis.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",

@@ -164,7 +164,11 @@ validated on every write:
 - `min` / `max` — numeric range, or string length for `text`/`richtext`
 - `pattern` — regex a `text`/`richtext` value must match
 - `unique` — value must be unique among entries of the type
+- `localized` — store a `{ locale: value }` map; reads flatten it to a locale
 - `refType` — target content type for a `reference`
+
+Localized reads take `?locale=` (REST) or a `locale:` arg (GraphQL); a missing
+locale falls back to `CMS_DEFAULT_LOCALE` (default `en`), then any available value.
 
 ## Review gate (agents propose, humans dispose)
 

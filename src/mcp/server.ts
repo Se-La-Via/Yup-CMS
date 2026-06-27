@@ -65,6 +65,10 @@ const fieldDefSchema = z.object({
   max: z.number().optional().describe("number: max value; text: max length"),
   pattern: z.string().optional().describe("text: regex the value must match"),
   unique: z.boolean().optional().describe("value must be unique within the type"),
+  localized: z
+    .boolean()
+    .optional()
+    .describe("store a { locale: value } map; reads flatten to a requested locale"),
 });
 
 // The trusted principal for this MCP connection. Identity is bound to the
