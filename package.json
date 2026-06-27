@@ -1,6 +1,6 @@
 {
   "name": "yup-cms",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Agent-native headless CMS. A content backend that AI agents drive as naturally as humans click a mouse.",
   "type": "module",
   "license": "MIT",

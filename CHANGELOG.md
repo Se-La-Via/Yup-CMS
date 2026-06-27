@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] — 2026-06-27
+
+### Added
+- **Admin dashboard** for human oversight: a dependency-free web UI plus an
+  admin API (separate process, `admin`-scoped API key). Review the approval
+  queue and approve/reject, publish/unpublish/delete entries, inspect webhooks
+  and their delivery log, and list assets. The public read API stays strictly
+  read-only — admin writes are attributed to a human principal, so they satisfy
+  the review gate. Configure with `CMS_ADMIN_PORT`.
+- **Unique field constraints** — mark a field `unique` and duplicate values are
+  rejected on create and update (best-effort, enforced in-transaction).
+
+### Verified
+- New CI smoke tests on real Postgres: the admin approval flow (`smoke:admin`,
+  including auth gating) and unique constraints (`smoke:unique`).
+
 ## [0.1.0] — 2026-06-27
 
 First public release. An agent-native headless CMS: AI agents write content
@@ -48,4 +64,5 @@ reversible.
   tests (migrations, the end-to-end demo, the webhook pipeline, and assets on
   both local and S3/MinIO backends) against real services.
 
+[0.2.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.1.0
