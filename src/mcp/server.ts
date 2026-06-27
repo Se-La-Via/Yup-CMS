@@ -9,6 +9,7 @@ import * as auth from "../core/auth.js";
 import * as assets from "../core/assets.js";
 import * as tenant from "../core/tenant.js";
 import * as read from "../core/read.js";
+import * as plugins from "../core/plugins.js";
 
 const server = new McpServer({
   name: "yup-cms",
@@ -533,6 +534,16 @@ server.registerTool(
 async function main() {
   // Resolve this connection's tenant before serving any request.
   TENANT_ID = await tenant.resolveTenantId(TENANT_SLUG);
+
+  // Load plugins and expose any MCP tools they contribute.
+  await plugins.loadPlugins();
+  for (const t of plugins.getPluginMcpTools()) {
+    server.registerTool(
+      t.name,
+      { description: t.description, inputSchema: (t.inputSchema ?? {}) as z.ZodRawShape },
+      tool(async (args: Record<string, unknown>) => t.handler(args)),
+    );
+  }
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

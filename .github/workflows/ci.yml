@@ -71,6 +71,8 @@ jobs:
       - run: npm run smoke:i18n
       # Ensures the demo dataset script runs end to end.
       - run: npm run demo
+      # Exercises the plugin system (custom field type + lifecycle hook).
+      - run: npm run smoke:plugins
 
   ratelimit-redis:
     name: rate limiter on Redis

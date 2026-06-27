@@ -144,6 +144,7 @@ src/
   mcp/       server.ts — 30 MCP tools (the write/control plane for agents)
   api/       server.ts — read-only HTTP API + asset serving (the public surface)
   admin/     server.ts + dashboard — human admin UI + admin API (oversight)
+  plugins/   plugin system + bundled example plugins
   scripts/   setup · migrate · worker · seed · smoke-{webhooks,assets,admin} · webhook-listener
 drizzle/     SQL migrations (reproducible installs)
 Dockerfile · docker-compose.yml
@@ -198,6 +199,38 @@ This is deliberately keyed on author attribution (`human` vs `agent`), so the sa
 mechanism that records *who* changed content also decides *who may ship it*. It
 emits `entry.review_requested`, `review.approved`, and `review.rejected` events,
 so an approval can itself kick off downstream automation.
+
+## Plugins (extend the core)
+
+Yup CMS is extensible without forking. A **plugin** is a module that contributes:
+
+- **custom field types** (with validation) — e.g. `email`, `color`;
+- **content lifecycle hooks** — `beforeCreate` / `beforeUpdate` (transform data)
+  and `afterPublish` (react);
+- **extra MCP tools** for agents.
+
+```ts
+import { definePlugin } from "yup-cms/plugins";
+
+export default definePlugin({
+  name: "reading-time",
+  hooks: {
+    beforeCreate: ({ data }) => ({ ...data, reading_time: estimate(data.body) }),
+  },
+});
+```
+
+Enable plugins by listing module specifiers in `plugins.json` (see
+[`plugins.example.json`](plugins.example.json)) or the `CMS_PLUGINS` env, or add
+one with `npm run plugin:add <package>`. They load at server startup. Two example
+plugins ship in `src/plugins/examples/`.
+
+For **no-code** extensions, the webhook/event system already lets external
+services (n8n, functions) react to changes — no plugin code needed.
+
+> Plugins run in-process and are trusted in a self-hosted deployment. A signed
+> plugin **marketplace** (discovery + install) is the natural next layer on top of
+> this manifest format.
 
 ## Multi-tenancy
 
@@ -422,6 +455,8 @@ Storage backends are configured with `CMS_STORAGE_BACKEND`:
 - ✅ Scheduled publishing (publish at a future time via the worker).
 - ✅ Distributed (Redis-backed) rate limiting for multi-instance deployments.
 - ✅ Multi-tenancy — isolated workspaces across every surface.
+- ✅ Plugin system — custom field types, lifecycle hooks, and MCP tools.
+- Plugin marketplace (signed discovery + install) on top of the manifest format.
 
 ## Contributing
 

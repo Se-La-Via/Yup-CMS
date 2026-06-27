@@ -1,0 +1,7 @@
+{
+  "//": "Copy to plugins.json to enable plugins. Each entry is a module specifier: an npm package name, or a path. In dev (tsx) use ./src/...ts; in production (node dist) use ./dist/...js.",
+  "plugins": [
+    "./dist/plugins/examples/email-field.js",
+    "./dist/plugins/examples/reading-time.js"
+  ]
+}

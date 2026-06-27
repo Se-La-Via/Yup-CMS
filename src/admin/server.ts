@@ -5,6 +5,7 @@ import * as events from "../core/events.js";
 import * as assets from "../core/assets.js";
 import * as auth from "../core/auth.js";
 import * as tenantsvc from "../core/tenant.js";
+import { loadPlugins } from "../core/plugins.js";
 import { NotFoundError, ValidationError } from "../core/content.js";
 import { DASHBOARD_HTML } from "./dashboard.js";
 
@@ -189,7 +190,9 @@ export function createAdminServer() {
 // Boot when run directly (not when imported by a test).
 if (process.argv[1] && /[/\\]admin[/\\]server\.(ts|js)$/.test(process.argv[1])) {
   const port = Number(process.env.CMS_ADMIN_PORT ?? 3001);
-  createAdminServer().listen(port, () => {
-    console.error(`Yup CMS admin on http://localhost:${port}`);
+  loadPlugins().then(() => {
+    createAdminServer().listen(port, () => {
+      console.error(`Yup CMS admin on http://localhost:${port}`);
+    });
   });
 }

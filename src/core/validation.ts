@@ -1,4 +1,5 @@
 import type { FieldDef } from "../db/schema.js";
+import { getFieldType } from "./plugins.js";
 
 export class ValidationError extends Error {
   constructor(public issues: string[]) {
@@ -56,6 +57,15 @@ export function validateEntryData(
         }
       }
       if (ok) clean[field.name] = map;
+      continue;
+    }
+
+    // Plugin-provided field types validate the value themselves.
+    const pluginType = getFieldType(field.type);
+    if (pluginType) {
+      const err = pluginType.validate(value, field);
+      if (err) issues.push(`"${field.name}": ${err}`);
+      else clean[field.name] = value;
       continue;
     }
 
@@ -162,7 +172,7 @@ export function validateFieldDefs(fields: FieldDef[]): void {
     if (seen.has(f.name)) issues.push(`duplicate field name "${f.name}"`);
     seen.add(f.name);
 
-    if (!VALID_TYPES.has(f.type)) {
+    if (!VALID_TYPES.has(f.type) && !getFieldType(f.type)) {
       issues.push(`field "${f.name}" has unknown type "${f.type}"`);
       continue;
     }

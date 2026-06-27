@@ -8,6 +8,7 @@
 import "dotenv/config";
 import { tick } from "../core/events.js";
 import { publishScheduledDue } from "../core/content.js";
+import { loadPlugins } from "../core/plugins.js";
 
 const INTERVAL_MS = Number(process.env.CMS_WORKER_INTERVAL_MS ?? 2000);
 let running = true;
@@ -16,6 +17,7 @@ process.on("SIGTERM", () => (running = false));
 process.on("SIGINT", () => (running = false));
 
 async function main() {
+  await loadPlugins();
   console.error(`Yup CMS webhook worker started (interval ${INTERVAL_MS}ms)`);
   while (running) {
     try {

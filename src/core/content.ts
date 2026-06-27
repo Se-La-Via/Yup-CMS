@@ -15,6 +15,7 @@ import {
 } from "./validation.js";
 import { recordEvent } from "./events.js";
 import { shouldHoldForReview, mayDecideReview } from "./policy.js";
+import { runDataHook, runEffectHook } from "./plugins.js";
 
 export { ValidationError };
 
@@ -212,7 +213,8 @@ export async function createEntry(input: {
 }) {
   const tenantId = tid(input);
   const type = await getContentType(input.type, tenantId);
-  const clean = validateEntryData(type.fields, input.data);
+  const hooked = await runDataHook("beforeCreate", { type: input.type, data: input.data, tenantId });
+  const clean = validateEntryData(type.fields, hooked);
   const author = defaultAuthor(input.author);
   const status = input.status ?? "draft";
 
@@ -267,7 +269,12 @@ export async function updateEntry(input: {
       .from(contentTypes)
       .where(eq(contentTypes.id, entry.typeId));
 
-    const validated = validateEntryData(type!.fields, input.data, { partial: true });
+    const hooked = await runDataHook("beforeUpdate", {
+      type: type!.name,
+      data: input.data,
+      tenantId,
+    });
+    const validated = validateEntryData(type!.fields, hooked, { partial: true });
     await checkUnique(tx, entry.typeId, type!.fields, validated, entry.id);
     const merged = { ...entry.data, ...validated };
     const nextRevision = entry.revision + 1;
@@ -316,7 +323,7 @@ export async function setEntryStatus(input: {
     }
   }
 
-  return db.transaction(async (tx) => {
+  const updated = await db.transaction(async (tx) => {
     const [entry] = await tx
       .select()
       .from(contentEntries)
@@ -324,7 +331,7 @@ export async function setEntryStatus(input: {
     if (!entry) throw new NotFoundError(`entry "${input.id}" not found`);
 
     const nextRevision = entry.revision + 1;
-    const [updated] = await tx
+    const [u] = await tx
       .update(contentEntries)
       .set({ status: input.status, revision: nextRevision, updatedAt: sql`now()` })
       .where(eq(contentEntries.id, entry.id))
@@ -347,9 +354,17 @@ export async function setEntryStatus(input: {
         : input.status === "archived"
           ? "entry.archived"
           : "entry.unpublished";
-    await recordEvent(tx, statusEvent, { entry: updated! }, tenantId);
-    return updated!;
+    await recordEvent(tx, statusEvent, { entry: u! }, tenantId);
+    return u!;
   });
+
+  if (input.status === "published") {
+    await runEffectHook("afterPublish", {
+      entry: updated as Record<string, unknown>,
+      tenantId,
+    });
+  }
+  return updated;
 }
 
 /**
