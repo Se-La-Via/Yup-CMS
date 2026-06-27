@@ -124,7 +124,7 @@ All configuration is environment variables (see [`.env.example`](.env.example)):
 src/
   db/        schema.ts (7 tables) · client.ts · migrate via drizzle-orm
   core/      validation · content (writes+revisions) · events (outbox+worker)
-             · policy · backoff · read · auth · assets · storage
+             · policy · backoff · read · graphql · ratelimit · auth · assets · storage
   mcp/       server.ts — 25 MCP tools (the write/control plane for agents)
   api/       server.ts — read-only HTTP API + asset serving (the public surface)
   admin/     server.ts + dashboard — human admin UI + admin API (oversight)
@@ -259,6 +259,25 @@ curl "http://localhost:3000/content/blog_post?status=published&resolve=true"
 curl "http://localhost:3000/content/blog_post/hello-yup"
 ```
 
+### GraphQL
+
+A read-only GraphQL endpoint is available at `POST /graphql` for front-ends that
+prefer typed queries over REST. Same trust rules apply (published is public;
+non-published needs a `read:all` key) and the same rate limit.
+
+```graphql
+{
+  entries(type: "blog_post", status: "published", limit: 10) {
+    id slug status data
+  }
+  contentType(name: "blog_post") { displayName fields }
+}
+```
+
+Queries: `contentTypes`, `contentType`, `entries`, `entry`, `entryBySlug`,
+`assets`. Dynamic per-type fields are exposed via a `JSON` scalar (`data`,
+`fields`). It's strictly read-only — there are no mutations (writes go through MCP).
+
 ### Authentication
 
 Published content is **public by default** — that is the point of a website.
@@ -350,7 +369,7 @@ Storage backends are configured with `CMS_STORAGE_BACKEND`:
 - ✅ Rate limiting on the read API (token bucket, per IP).
 - ✅ Admin dashboard for human oversight (review queue, publish, webhooks, assets).
 - ✅ Unique field constraints.
-- GraphQL read layer alongside REST.
+- ✅ GraphQL read layer alongside REST.
 - Multi-tenant scoping; distributed (Redis-backed) rate limiting.
 
 ## Contributing

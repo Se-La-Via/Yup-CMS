@@ -1,0 +1,107 @@
+import { graphql, GraphQLError } from "graphql";
+import { eq } from "drizzle-orm";
+import { db } from "../db/client.js";
+import { contentTypes } from "../db/schema.js";
+import { schema } from "./graphql-schema.js";
+import * as content from "./content.js";
+import * as read from "./read.js";
+import * as assets from "./assets.js";
+import * as auth from "./auth.js";
+
+/**
+ * GraphQL read layer. Same trust rules as the REST read API: published content
+ * is public; reading non-published (an explicit non-published status, or a
+ * by-id lookup that could return a draft) needs a `read:all` API key.
+ */
+
+export interface GraphQLContext {
+  key: auth.ApiKeyRecord | null;
+}
+
+function requireReadAll(ctx: GraphQLContext) {
+  if (!ctx.key || !auth.hasScope(ctx.key, "read:all")) {
+    throw new GraphQLError(
+      "an API key with the 'read:all' scope is required to read non-published content",
+    );
+  }
+}
+
+function requireForStatus(status: string | undefined, ctx: GraphQLContext) {
+  if (status && status !== "published") requireReadAll(ctx);
+}
+
+async function typeNameOf(typeId: string): Promise<string> {
+  const [t] = await db
+    .select({ name: contentTypes.name })
+    .from(contentTypes)
+    .where(eq(contentTypes.id, typeId));
+  return t?.name ?? "";
+}
+
+type Row = typeof import("../db/schema.js").contentEntries.$inferSelect;
+
+function mapEntry(row: Row, typeName: string) {
+  return {
+    id: row.id,
+    type: typeName,
+    slug: row.slug,
+    status: row.status,
+    revision: row.revision,
+    data: row.data,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+const root = {
+  contentTypes: () => content.listContentTypes(),
+  contentType: ({ name }: { name: string }) =>
+    content.getContentType(name).catch(() => null),
+
+  entries: async (
+    args: { type: string; status?: string; limit?: number; offset?: number },
+    ctx: GraphQLContext,
+  ) => {
+    requireForStatus(args.status, ctx);
+    const rows = await read.list({
+      type: args.type,
+      status: (args.status as read.Status) ?? "published",
+      limit: args.limit,
+      offset: args.offset,
+    });
+    return rows.map((r) => mapEntry(r, args.type));
+  },
+
+  entry: async ({ id }: { id: string }, ctx: GraphQLContext) => {
+    // A by-id lookup can return any status, so it is always privileged.
+    requireReadAll(ctx);
+    const e = await read.getById({ id }).catch(() => null);
+    if (!e) return null;
+    return mapEntry(e, await typeNameOf(e.typeId));
+  },
+
+  entryBySlug: async (
+    args: { type: string; slug: string; status?: string },
+    ctx: GraphQLContext,
+  ) => {
+    requireForStatus(args.status, ctx);
+    const e = await read
+      .getBySlug({
+        type: args.type,
+        slug: args.slug,
+        status: (args.status as read.Status) ?? "published",
+      })
+      .catch(() => null);
+    return e ? mapEntry(e, args.type) : null;
+  },
+
+  assets: ({ limit }: { limit?: number }) => assets.listAssets(limit ?? 50),
+};
+
+export async function executeGraphQL(
+  source: string,
+  variableValues: Record<string, unknown> | undefined,
+  context: GraphQLContext,
+) {
+  return graphql({ schema, source, rootValue: root, contextValue: context, variableValues });
+}

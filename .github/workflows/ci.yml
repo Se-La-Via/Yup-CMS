@@ -59,6 +59,8 @@ jobs:
       - run: npm run smoke:admin
       # Exercises unique field constraints on create and update.
       - run: npm run smoke:unique
+      # Exercises the GraphQL read layer (public query + non-published gating).
+      - run: npm run smoke:graphql
 
   s3:
     name: assets on S3 (MinIO)

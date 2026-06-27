@@ -1,10 +1,11 @@
 import "dotenv/config";
-import { createServer, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import * as read from "../core/read.js";
 import * as content from "../core/content.js";
 import * as auth from "../core/auth.js";
 import * as assets from "../core/assets.js";
 import { createLimiterFromEnv } from "../core/ratelimit.js";
+import { executeGraphQL } from "../core/graphql.js";
 import { NotFoundError, ValidationError } from "../core/content.js";
 
 /**
@@ -19,6 +20,7 @@ import { NotFoundError, ValidationError } from "../core/content.js";
  *   GET /entries/:id                   one entry by id  (?resolve=true)
  *   GET /assets                        list asset metadata
  *   GET /assets/:id                    stream an asset's bytes
+ *   POST /graphql                      GraphQL read queries
  *
  * Writes happen through the MCP server, never here — this surface only reads.
  */
@@ -35,10 +37,31 @@ function send(
   res.writeHead(status, {
     "content-type": "application/json",
     "access-control-allow-origin": "*",
-    "access-control-allow-methods": "GET, OPTIONS",
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "authorization, content-type",
     ...extraHeaders,
   });
   res.end(JSON.stringify(body, null, 2));
+}
+
+function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  return new Promise((resolve) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      try {
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch {
+        resolve({});
+      }
+    });
+  });
+}
+
+function rateLimited(req: IncomingMessage): { retryAfter: number } | null {
+  if (!limiter) return null;
+  const r = limiter.check(clientKey(req), Date.now());
+  return r.allowed ? null : { retryAfter: Math.ceil(r.retryAfterMs / 1000) };
 }
 
 function num(v: string | null): number | undefined {
@@ -64,6 +87,32 @@ const server = createServer(async (req, res) => {
   const q = url.searchParams;
 
   if (req.method === "OPTIONS") return send(res, 204, {});
+
+  // GraphQL read endpoint (POST). Read-only — queries only.
+  if (req.method === "POST" && url.pathname === "/graphql") {
+    const limited = rateLimited(req);
+    if (limited) {
+      return send(res, 429, { error: "rate limit exceeded" }, {
+        "retry-after": String(limited.retryAfter),
+      });
+    }
+    const authz = req.headers.authorization;
+    const token = authz?.startsWith("Bearer ")
+      ? authz.slice(7)
+      : (req.headers["x-api-key"] as string | undefined);
+    const key = await auth.verifyKey(token);
+    const body = await readBody(req);
+    if (typeof body.query !== "string") {
+      return send(res, 400, { errors: [{ message: "missing 'query' string" }] });
+    }
+    const result = await executeGraphQL(
+      body.query,
+      body.variables as Record<string, unknown> | undefined,
+      { key },
+    );
+    return send(res, 200, result);
+  }
+
   if (req.method !== "GET") {
     return send(res, 405, { error: "read-only API; only GET is supported" });
   }
@@ -85,21 +134,18 @@ const server = createServer(async (req, res) => {
     }
 
     // --- Rate limiting ----------------------------------------------------
-    if (limiter) {
-      const r = limiter.check(clientKey(req), Date.now());
-      if (!r.allowed) {
-        const retryAfter = Math.ceil(r.retryAfterMs / 1000);
-        return send(
-          res,
-          429,
-          { error: "rate limit exceeded", retryAfterSeconds: retryAfter },
-          {
-            "retry-after": String(retryAfter),
-            "x-ratelimit-limit": String(limiter.limit),
-            "x-ratelimit-remaining": "0",
-          },
-        );
-      }
+    const limited = rateLimited(req);
+    if (limited) {
+      return send(
+        res,
+        429,
+        { error: "rate limit exceeded", retryAfterSeconds: limited.retryAfter },
+        {
+          "retry-after": String(limited.retryAfter),
+          "x-ratelimit-limit": String(limiter!.limit),
+          "x-ratelimit-remaining": "0",
+        },
+      );
     }
 
     // --- Authentication / authorization -----------------------------------

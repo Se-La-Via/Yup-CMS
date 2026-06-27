@@ -26,6 +26,7 @@
     "smoke:assets": "tsx src/scripts/smoke-assets.ts",
     "smoke:admin": "tsx src/scripts/smoke-admin.ts",
     "smoke:unique": "tsx src/scripts/smoke-unique.ts",
+    "smoke:graphql": "tsx src/scripts/smoke-graphql.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/scripts/migrate.ts",
@@ -40,6 +41,7 @@
     "@modelcontextprotocol/sdk": "^1.12.0",
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.36.0",
+    "graphql": "^16.9.0",
     "postgres": "^3.4.5",
     "zod": "^3.23.8"
   },
