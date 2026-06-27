@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] — 2026-06-27
+
+### Added
+- **Full-text search** over entry content (Postgres FTS), tenant-scoped and
+  published-by-default. Available on REST (`GET /search`), GraphQL (`search`),
+  and MCP (`search_entries`).
+- **Localized fields (i18n)** — mark a field `localized` to store a
+  `{ locale: value }` map; reads flatten to a requested locale (`?locale=` /
+  GraphQL `locale:`) with fallback to `CMS_DEFAULT_LOCALE` then any value.
+- **Tenant-aware admin** — the dashboard shows the current tenant and lists
+  tenants (`/api/whoami`, `/api/tenants`).
+- **Per-key rate limiting** — authenticated callers are limited per API key (a
+  per-tenant budget); anonymous callers per IP.
+- **Demo dataset** — `npm run demo` populates a realistic instance (localized
+  posts, authors via references, an asset, a webhook). New deploy guide in the
+  README.
+
 ## [0.3.0] — 2026-06-27
 
 ### Added
@@ -84,6 +101,7 @@ reversible.
   tests (migrations, the end-to-end demo, the webhook pipeline, and assets on
   both local and S3/MinIO backends) against real services.
 
+[0.4.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.1.0
