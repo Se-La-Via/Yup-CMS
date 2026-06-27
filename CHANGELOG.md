@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] — 2026-06-27
+
+Extensibility, a real editing UI, server-side rendering, and an admin copilot.
+
+### Added
+- **Plugin system** — extend the core without forking: custom field types,
+  content lifecycle hooks (`beforeCreate`/`beforeUpdate`/`afterPublish`), and
+  extra MCP tools. Loaded from `plugins.json` / `CMS_PLUGINS`; `npm run plugin:add`.
+- **Marketplace** for plugins & themes — a registry with publish, public browse
+  (`GET /marketplace`), one-click install from the admin, and MCP tools.
+- **Full editing GUI** — the admin dashboard can now create and edit entries via
+  forms generated from each content type's schema.
+- **Themes & server-side rendering** — an optional render server turns published
+  content into HTML pages; ships a safe `default` theme and a `rich` theme that
+  renders richtext as HTML via a built-in safe Markdown renderer.
+- **Admin copilot + insights** — an in-dashboard AI assistant (Claude) that
+  drives the CMS through its tools as an *agent* (gated publishes go to review),
+  plus a no-LLM insights panel. Enable with `ANTHROPIC_API_KEY`.
+
+### Notes
+- Migrations are additive. New optional services: `render` and `admin` (in
+  docker-compose). The copilot is optional and degrades gracefully without a key.
+
 ## [0.4.0] — 2026-06-27
 
 ### Added
@@ -101,6 +124,7 @@ reversible.
   tests (migrations, the end-to-end demo, the webhook pipeline, and assets on
   both local and S3/MinIO backends) against real services.
 
+[0.5.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.2.0
