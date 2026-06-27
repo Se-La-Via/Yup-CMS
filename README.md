@@ -140,7 +140,8 @@ All configuration is environment variables (see [`.env.example`](.env.example)):
 src/
   db/        schema.ts (7 tables) · client.ts · migrate via drizzle-orm
   core/      validation · content (writes+revisions) · events (outbox+worker)
-             · policy · backoff · read · graphql · ratelimit · auth · assets · storage
+             · policy · backoff · read · graphql · ratelimit · auth · assets
+             · storage · plugins · tenant · assistant (copilot) · insights
   mcp/       server.ts — 30 MCP tools (the write/control plane for agents)
   api/       server.ts — read-only HTTP API + asset serving (the public surface)
   admin/     server.ts + dashboard — human admin UI + admin API (oversight)
@@ -249,6 +250,22 @@ services (n8n, functions) react to changes — no plugin code needed.
 > Plugins run in-process and are trusted in a self-hosted deployment. A signed
 > plugin **marketplace** (discovery + install) is the natural next layer on top of
 > this manifest format.
+
+## Admin copilot (the CMS helps the admin)
+
+The admin dashboard ships an **AI copilot** and a rules-based **insights** panel.
+
+- **Copilot** — a chat panel where the operator drives the CMS in natural
+  language ("draft a post about X and publish it", "what's pending review?",
+  "find posts mentioning Y"). It's Claude wired to a curated subset of the CMS
+  tools. Crucially it acts as an **agent** principal: publishing an
+  approval-gated type goes to the **review queue** (a human approves), and it
+  cannot approve/reject or delete — it proposes, humans dispose. Everything is
+  tenant-scoped and recorded in the audit trail as `agent:assistant`. Enable it
+  by setting `ANTHROPIC_API_KEY` (model via `CMS_ASSISTANT_MODEL`, default
+  `claude-opus-4-8`); without a key the rest of the admin works normally.
+- **Insights** — no-LLM signals: pending reviews, stale drafts, scheduled
+  entries, failed webhook deliveries.
 
 ## Multi-tenancy
 
@@ -420,7 +437,8 @@ is a single dependency-free page where a human reviewer can:
   human-in-the-loop action behind the review gate;
 - **create and edit entries** with forms generated from the content type's
   fields, and **publish/unpublish/delete** them;
-- inspect webhooks and their delivery log, list assets, and view tenants.
+- inspect webhooks and their delivery log, list assets, and view tenants;
+- see **insights** (what needs attention) and chat with the **AI copilot**.
 
 Every admin action requires an **`admin`-scoped API key** (mint one with the MCP
 tool `create_api_key`); the dashboard prompts for it and stores it locally. The
@@ -476,6 +494,7 @@ Storage backends are configured with `CMS_STORAGE_BACKEND`:
 - ✅ Multi-tenancy — isolated workspaces across every surface.
 - ✅ Plugin system — custom field types, lifecycle hooks, and MCP tools.
 - ✅ Themes & server-side rendering (optional HTML pages) + full editing GUI.
+- ✅ Admin copilot (AI assistant) + rules-based insights.
 - Plugin marketplace (signed discovery + install) on top of the manifest format.
 
 ## Contributing

@@ -5,6 +5,8 @@ import * as events from "../core/events.js";
 import * as assets from "../core/assets.js";
 import * as auth from "../core/auth.js";
 import * as tenantsvc from "../core/tenant.js";
+import { getInsights } from "../core/insights.js";
+import { runAssistant, AssistantNotConfiguredError } from "../core/assistant.js";
 import { loadPlugins } from "../core/plugins.js";
 import { NotFoundError, ValidationError } from "../core/content.js";
 import { DASHBOARD_HTML } from "./dashboard.js";
@@ -88,6 +90,24 @@ export function createAdminServer() {
       }
       if (method === "GET" && path[0] === "tenants") {
         return json(res, 200, await tenantsvc.listTenants());
+      }
+      if (method === "GET" && path[0] === "insights") {
+        return json(res, 200, await getInsights(tenantId));
+      }
+      if (method === "POST" && path[0] === "assist") {
+        const body = await readJsonBody(req);
+        try {
+          const result = await runAssistant({
+            messages: (body.messages as never) ?? [],
+            tenantId,
+          });
+          return json(res, 200, result);
+        } catch (e) {
+          if (e instanceof AssistantNotConfiguredError) {
+            return json(res, 503, { error: e.message });
+          }
+          throw e;
+        }
       }
       if (method === "GET" && path[0] === "types") {
         return json(res, 200, await content.listContentTypes(tenantId));

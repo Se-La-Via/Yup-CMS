@@ -75,6 +75,8 @@ jobs:
       - run: npm run smoke:plugins
       # Exercises the rendering layer (list + entry HTML pages).
       - run: npm run smoke:render
+      # Exercises the admin copilot tool layer + insights (no LLM call).
+      - run: npm run smoke:assistant
 
   ratelimit-redis:
     name: rate limiter on Redis

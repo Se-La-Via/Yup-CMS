@@ -45,6 +45,8 @@ export const DASHBOARD_HTML = `<!doctype html>
   <button data-tab="webhooks" onclick="go('webhooks')">Webhooks</button>
   <button data-tab="assets" onclick="go('assets')">Assets</button>
   <button data-tab="tenants" onclick="go('tenants')">Tenants</button>
+  <button data-tab="insights" onclick="go('insights')">Insights</button>
+  <button data-tab="assistant" onclick="go('assistant')">Assistant</button>
 </nav>
 <div id="err" class="err" hidden></div>
 <main id="main">Enter your admin API key to begin.</main>
@@ -88,7 +90,46 @@ function go(tab) {
   document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   if (!KEY) { $("#main").textContent = "Enter your admin API key to begin."; return; }
   refreshTenant();
-  ({ reviews: renderReviews, content: renderContent, webhooks: renderWebhooks, assets: renderAssets, tenants: renderTenants }[tab])();
+  ({ reviews: renderReviews, content: renderContent, webhooks: renderWebhooks, assets: renderAssets, tenants: renderTenants, insights: renderInsights, assistant: renderAssistant }[tab])();
+}
+
+async function renderInsights() {
+  showErr("");
+  try {
+    const r = await api("/insights");
+    $("#main").innerHTML = "<h3>What needs attention</h3><ul>" +
+      r.items.map((i) => "<li>" + (i.level === "warn" ? "⚠️ " : "• ") + esc(i.message) + "</li>").join("") +
+      "</ul>";
+  } catch (e) { showErr(e.message); }
+}
+
+let CHAT = [];
+async function renderAssistant() {
+  showErr("");
+  $("#main").innerHTML =
+    "<p class=muted>Ask the copilot to find, draft, or publish content. It acts as an agent — publishing gated types goes to the review queue.</p>" +
+    "<div id='chat' style='border:1px solid #8883;border-radius:8px;padding:10px;min-height:120px;margin-bottom:8px'></div>" +
+    "<div style='display:flex;gap:6px'><input id='ask' style='flex:1' placeholder=\\"e.g. draft a blog post about our launch\\" onkeydown='if(event.key===\\"Enter\\")sendAsk()'><button class='btn go' onclick='sendAsk()'>Send</button></div>";
+  drawChat();
+}
+function drawChat() {
+  const el = $("#chat"); if (!el) return;
+  el.innerHTML = CHAT.map((m) =>
+    "<p><b>" + (m.role === "user" ? "You" : "Copilot") + ":</b> " + esc(m.content) +
+    (m.actions && m.actions.length ? "<br><span class=muted>actions: " + esc(m.actions.map((a) => a.tool + (a.ok ? "" : "✗")).join(", ")) + "</span>" : "") +
+    "</p>").join("") || "<span class=muted>No messages yet.</span>";
+  el.scrollTop = el.scrollHeight;
+}
+async function sendAsk() {
+  const input = $("#ask"); const text = input.value.trim(); if (!text) return;
+  input.value = ""; CHAT.push({ role: "user", content: text }); drawChat();
+  try {
+    const r = await api("/assist", { method: "POST", body: JSON.stringify({ messages: CHAT.map((m) => ({ role: m.role, content: m.content })) }) });
+    CHAT.push({ role: "assistant", content: r.reply || "(no reply)", actions: r.actions });
+    drawChat();
+  } catch (e) {
+    CHAT.push({ role: "assistant", content: "Error: " + e.message }); drawChat();
+  }
 }
 
 async function renderTenants() {
