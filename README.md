@@ -99,7 +99,23 @@ publish it."*
 ```bash
 npm run seed   # defines a type, an agent writes + edits, a human publishes,
                # prints the audit trail, reverts — then demos the review gate
+npm run demo   # populates a realistic dataset: localized posts, authors
+               # (references), an asset, and a webhook — so the install looks alive
 ```
+
+### Deploying to a server
+
+Docker Compose runs anywhere Docker does (a VPS, etc.). For production:
+
+1. Set strong secrets in `.env` (`POSTGRES_PASSWORD`); consider a managed
+   Postgres and point `DATABASE_URL` at it.
+2. Put the read API and admin behind a TLS-terminating reverse proxy (nginx,
+   Caddy, Traefik). Expose the read API publicly; keep the admin port private or
+   behind auth at the proxy.
+3. `CMS_REQUIRE_API_KEY=true` if even published reads should require a key; set
+   `CMS_RATE_BACKEND=redis` (+ a Redis service) when running multiple instances.
+4. `docker compose up -d --build`; migrations run automatically. Run `npm run demo`
+   once to seed sample content if you want.
 
 ---
 

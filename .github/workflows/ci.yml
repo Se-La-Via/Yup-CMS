@@ -69,6 +69,8 @@ jobs:
       - run: npm run smoke:search
       # Exercises localized fields (locale resolution + fallback).
       - run: npm run smoke:i18n
+      # Ensures the demo dataset script runs end to end.
+      - run: npm run demo
 
   ratelimit-redis:
     name: rate limiter on Redis
