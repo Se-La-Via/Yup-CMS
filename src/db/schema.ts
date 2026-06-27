@@ -285,6 +285,27 @@ export const assets = pgTable("assets", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Marketplace registry — a catalog of installable plugins and themes. Global
+ * (not tenant-scoped): it lists code that operators can install into a
+ * deployment. `specifier` is the module specifier (npm package or path) that
+ * gets added to plugins.json on install.
+ */
+export const marketplaceItems = pgTable("marketplace_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  kind: text("kind").notNull(), // "plugin" | "theme"
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  specifier: text("specifier").notNull(),
+  version: text("version"),
+  author: text("author"),
+  homepage: text("homepage"),
+  tags: text("tags").array().notNull().default(sql`ARRAY[]::text[]`),
+  // Curated/trust flag. Full package signing is a future step.
+  verified: boolean("verified").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------------------------------------------------------------------------
 // Field definition shape (stored inside content_types.fields)
 // ---------------------------------------------------------------------------

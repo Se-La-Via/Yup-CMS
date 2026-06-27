@@ -8,6 +8,7 @@ import * as assets from "../core/assets.js";
 import { createLimiterFromEnv } from "../core/ratelimit.js";
 import { executeGraphQL } from "../core/graphql.js";
 import * as tenant from "../core/tenant.js";
+import * as marketplace from "../core/marketplace.js";
 import { NotFoundError, ValidationError } from "../core/content.js";
 
 /**
@@ -23,6 +24,8 @@ import { NotFoundError, ValidationError } from "../core/content.js";
  *   GET /assets                        list asset metadata
  *   GET /assets/:id                    stream an asset's bytes
  *   GET /search?q=&type=              full-text search over entries
+ *   GET /marketplace?kind=&q=          catalog of installable plugins & themes
+ *   GET /marketplace/:name             one marketplace item
  *   POST /graphql                      GraphQL read queries
  *
  * Writes happen through the MCP server, never here — this surface only reads.
@@ -241,6 +244,21 @@ const server = createServer(async (req, res) => {
       });
       res.end(bytes);
       return;
+    }
+
+    // /marketplace — public catalog of installable plugins & themes
+    if (seg[0] === "marketplace" && seg.length === 1) {
+      return send(
+        res,
+        200,
+        await marketplace.listItems({
+          kind: (q.get("kind") as never) ?? undefined,
+          q: q.get("q") ?? undefined,
+        }),
+      );
+    }
+    if (seg[0] === "marketplace" && seg.length === 2) {
+      return send(res, 200, await marketplace.getItem(seg[1]!));
     }
 
     // /search?q=&type=&status=&limit=

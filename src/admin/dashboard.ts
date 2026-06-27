@@ -47,6 +47,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   <button data-tab="tenants" onclick="go('tenants')">Tenants</button>
   <button data-tab="insights" onclick="go('insights')">Insights</button>
   <button data-tab="assistant" onclick="go('assistant')">Assistant</button>
+  <button data-tab="marketplace" onclick="go('marketplace')">Marketplace</button>
 </nav>
 <div id="err" class="err" hidden></div>
 <main id="main">Enter your admin API key to begin.</main>
@@ -90,7 +91,27 @@ function go(tab) {
   document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   if (!KEY) { $("#main").textContent = "Enter your admin API key to begin."; return; }
   refreshTenant();
-  ({ reviews: renderReviews, content: renderContent, webhooks: renderWebhooks, assets: renderAssets, tenants: renderTenants, insights: renderInsights, assistant: renderAssistant }[tab])();
+  ({ reviews: renderReviews, content: renderContent, webhooks: renderWebhooks, assets: renderAssets, tenants: renderTenants, insights: renderInsights, assistant: renderAssistant, marketplace: renderMarketplace }[tab])();
+}
+
+async function renderMarketplace() {
+  showErr("");
+  try {
+    const rows = await api("/marketplace");
+    $("#main").innerHTML = "<h3>Plugins &amp; themes</h3>" +
+      (rows.length ? "<table><tr><th>Name</th><th>Kind</th><th>Description</th><th></th></tr>" +
+        rows.map((m) => "<tr><td>" + esc(m.name) + (m.verified ? " ✓" : "") +
+          "</td><td><span class=pill>" + esc(m.kind) + "</span></td><td>" + esc(m.description) +
+          " <span class=muted>" + esc(m.specifier) + "</span></td><td>" +
+          "<button class='btn go' onclick=\\"install('" + esc(m.name) + "')\\">Install</button></td></tr>").join("") +
+        "</table>" : "<p class=muted>Catalog is empty. Publish items via MCP or the admin API.</p>");
+  } catch (e) { showErr(e.message); }
+}
+async function install(name) {
+  try {
+    const r = await api("/marketplace/install", { method: "POST", body: JSON.stringify({ name }) });
+    alert("Installed " + r.name + " (" + r.specifier + ").\\n" + r.note);
+  } catch (e) { showErr(e.message); }
 }
 
 async function renderInsights() {

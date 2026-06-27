@@ -10,6 +10,7 @@ import * as assets from "../core/assets.js";
 import * as tenant from "../core/tenant.js";
 import * as read from "../core/read.js";
 import * as plugins from "../core/plugins.js";
+import * as marketplace from "../core/marketplace.js";
 
 const server = new McpServer({
   name: "yup-cms",
@@ -501,6 +502,52 @@ server.registerTool(
     inputSchema: { id: z.string() },
   },
   tool(async ({ id }) => auth.revokeApiKey(id, TENANT_ID)),
+);
+
+// --- Marketplace (plugins & themes) ----------------------------------------
+
+server.registerTool(
+  "marketplace_list",
+  {
+    title: "List marketplace items",
+    description: "Browse the catalog of installable plugins and themes.",
+    inputSchema: {
+      kind: z.enum(["plugin", "theme"]).optional(),
+      q: z.string().optional().describe("search query"),
+    },
+  },
+  tool(async (args) => marketplace.listItems(args)),
+);
+
+server.registerTool(
+  "marketplace_get",
+  {
+    title: "Get marketplace item",
+    description: "Get one marketplace item by name.",
+    inputSchema: { name: z.string() },
+  },
+  tool(async ({ name }) => marketplace.getItem(name)),
+);
+
+server.registerTool(
+  "marketplace_publish",
+  {
+    title: "Publish to marketplace",
+    description:
+      "Publish (or update) a plugin or theme in the marketplace. `specifier` is the module specifier installers add to plugins.json.",
+    inputSchema: {
+      kind: z.enum(["plugin", "theme"]),
+      name: z.string().describe("kebab-case unique name"),
+      specifier: z.string().describe("npm package or module path"),
+      description: z.string().optional(),
+      version: z.string().optional(),
+      author: z.string().optional(),
+      homepage: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      verified: z.boolean().optional(),
+    },
+  },
+  tool(async (args) => marketplace.publishItem(args)),
 );
 
 // --- Tenants (workspaces) --------------------------------------------------

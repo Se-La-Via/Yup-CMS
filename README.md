@@ -227,6 +227,26 @@ Two themes ship in the box:
   first and link hrefs are allow-listed — no XSS), and dates/booleans/
   references/JSON render appropriately, with nicer typography.
 
+## Marketplace (plugins & themes)
+
+A built-in registry of installable plugins and themes — dogfooded on the CMS
+itself.
+
+- **Browse** the catalog publicly: `GET /marketplace?kind=&q=` and
+  `GET /marketplace/:name` on the read API; or the **Marketplace** tab in the
+  admin dashboard.
+- **Publish** an item (plugin or theme) with the MCP tool `marketplace_publish`
+  or `POST /api/marketplace` (admin). Each item carries a `specifier` — the npm
+  package or module path installers add to `plugins.json`. Re-publishing the same
+  name updates it.
+- **Install** from the admin (`POST /api/marketplace/install`, one click in the
+  dashboard) — it appends the item's specifier to `plugins.json`; restart the
+  affected service to load it. Themes self-register on load; plugins register
+  their field types/hooks/tools.
+- Seed the bundled examples with `npm run marketplace:seed`.
+
+Items carry a `verified` flag for curation; signed packages are a future step.
+
 ## Plugins (extend the core)
 
 Yup CMS is extensible without forking. A **plugin** is a module that contributes:
@@ -503,7 +523,8 @@ Storage backends are configured with `CMS_STORAGE_BACKEND`:
 - ✅ Plugin system — custom field types, lifecycle hooks, and MCP tools.
 - ✅ Themes & server-side rendering (optional HTML pages) + full editing GUI.
 - ✅ Admin copilot (AI assistant) + rules-based insights.
-- Plugin marketplace (signed discovery + install) on top of the manifest format.
+- ✅ Plugin & theme marketplace (registry, publish, browse, one-click install).
+- Signed/verified marketplace packages and a hosted public registry.
 
 ## Contributing
 

@@ -77,6 +77,8 @@ jobs:
       - run: npm run smoke:render
       # Exercises the admin copilot tool layer + insights (no LLM call).
       - run: npm run smoke:assistant
+      # Exercises the marketplace: publish → search → get → install.
+      - run: npm run smoke:marketplace
 
   ratelimit-redis:
     name: rate limiter on Redis

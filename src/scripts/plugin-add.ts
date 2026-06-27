@@ -7,8 +7,8 @@
  * npm packages are installed; relative paths are added as-is. The configured
  * plugins are loaded at server startup.
  */
-import { readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
+import { enablePlugin } from "../core/plugins.js";
 
 async function main() {
   const spec = process.argv[2];
@@ -23,12 +23,8 @@ async function main() {
     if (r.status !== 0) process.exit(r.status ?? 1);
   }
 
-  const raw = await readFile("plugins.json", "utf8").catch(() => '{"plugins":[]}');
-  const json = JSON.parse(raw) as { plugins?: string[] };
-  json.plugins = Array.from(new Set([...(json.plugins ?? []), spec]));
-  await writeFile("plugins.json", JSON.stringify(json, null, 2) + "\n", "utf8");
-
-  console.log(`✓ Added "${spec}" to plugins.json (${json.plugins.length} plugin(s)).`);
+  const plugins = await enablePlugin(spec);
+  console.log(`✓ Added "${spec}" to plugins.json (${plugins.length} plugin(s)).`);
   console.log("  Restart the server to load it.");
 }
 

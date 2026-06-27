@@ -7,7 +7,8 @@ import * as auth from "../core/auth.js";
 import * as tenantsvc from "../core/tenant.js";
 import { getInsights } from "../core/insights.js";
 import { runAssistant, AssistantNotConfiguredError } from "../core/assistant.js";
-import { loadPlugins } from "../core/plugins.js";
+import { loadPlugins, enablePlugin } from "../core/plugins.js";
+import * as marketplace from "../core/marketplace.js";
 import { NotFoundError, ValidationError } from "../core/content.js";
 import { DASHBOARD_HTML } from "./dashboard.js";
 
@@ -94,6 +95,16 @@ export function createAdminServer() {
       if (method === "GET" && path[0] === "insights") {
         return json(res, 200, await getInsights(tenantId));
       }
+      if (method === "GET" && path[0] === "marketplace") {
+        return json(
+          res,
+          200,
+          await marketplace.listItems({
+            kind: (q.get("kind") as never) ?? undefined,
+            q: q.get("q") ?? undefined,
+          }),
+        );
+      }
       if (method === "POST" && path[0] === "assist") {
         const body = await readJsonBody(req);
         try {
@@ -155,6 +166,22 @@ export function createAdminServer() {
       }
 
       // --- actions ---
+      if (method === "POST" && path[0] === "marketplace" && path[1] === "install") {
+        const body = await readJsonBody(req);
+        const item = await marketplace.getItem(body.name as string);
+        const plugins = await enablePlugin(item.specifier);
+        return json(res, 200, {
+          installed: true,
+          name: item.name,
+          specifier: item.specifier,
+          plugins,
+          note: "Restart the affected service to load it.",
+        });
+      }
+      if (method === "POST" && path[0] === "marketplace" && path.length === 1) {
+        const body = await readJsonBody(req);
+        return json(res, 200, await marketplace.publishItem(body as never));
+      }
       if (method === "POST" && path[0] === "types" && path.length === 1) {
         const body = await readJsonBody(req);
         return json(

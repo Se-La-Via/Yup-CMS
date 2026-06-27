@@ -36,6 +36,7 @@
     "smoke:plugins": "tsx src/scripts/smoke-plugins.ts",
     "smoke:render": "tsx src/scripts/smoke-render.ts",
     "smoke:assistant": "tsx src/scripts/smoke-assistant.ts",
+    "smoke:marketplace": "tsx src/scripts/smoke-marketplace.ts",
     "smoke:ratelimit-redis": "tsx src/scripts/smoke-ratelimit-redis.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
@@ -44,6 +45,7 @@
     "seed": "tsx src/scripts/seed.ts",
     "demo": "tsx src/scripts/demo.ts",
     "plugin:add": "tsx src/scripts/plugin-add.ts",
+    "marketplace:seed": "tsx src/scripts/marketplace-seed.ts",
     "webhook:listen": "tsx src/scripts/webhook-listener.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"

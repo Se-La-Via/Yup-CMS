@@ -135,6 +135,10 @@ export async function loadPlugins(): Promise<void> {
     console.error("Failed to read plugins.json:", (e as Error).message);
   }
 
+  await registerSpecs(specs);
+}
+
+async function registerSpecs(specs: Set<string>): Promise<void> {
   for (const spec of specs) {
     try {
       const mod = (await import(spec)) as { default?: Plugin; plugin?: Plugin };
@@ -149,4 +153,17 @@ export async function loadPlugins(): Promise<void> {
       console.error(`Failed to load plugin "${spec}":`, (e as Error).message);
     }
   }
+}
+
+/**
+ * Add a module specifier (plugin or theme) to plugins.json so it loads at the
+ * next startup. Idempotent. Used by `plugin:add` and the marketplace installer.
+ */
+export async function enablePlugin(spec: string): Promise<string[]> {
+  const { readFile, writeFile } = await import("node:fs/promises");
+  const raw = await readFile("plugins.json", "utf8").catch(() => '{"plugins":[]}');
+  const json = JSON.parse(raw) as { plugins?: string[] };
+  json.plugins = Array.from(new Set([...(json.plugins ?? []), spec]));
+  await writeFile("plugins.json", JSON.stringify(json, null, 2) + "\n", "utf8");
+  return json.plugins;
 }
