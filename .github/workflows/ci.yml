@@ -73,6 +73,8 @@ jobs:
       - run: npm run demo
       # Exercises the plugin system (custom field type + lifecycle hook).
       - run: npm run smoke:plugins
+      # Exercises the rendering layer (list + entry HTML pages).
+      - run: npm run smoke:render
 
   ratelimit-redis:
     name: rate limiter on Redis

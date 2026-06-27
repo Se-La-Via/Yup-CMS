@@ -74,6 +74,23 @@ services:
       - "${CMS_ADMIN_PORT:-3001}:${CMS_ADMIN_PORT:-3001}"
     restart: unless-stopped
 
+  # Optional: server-rendered HTML pages from published content.
+  render:
+    build: .
+    command: node dist/render/server.js
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-yup}:${POSTGRES_PASSWORD:-yup}@db:5432/${POSTGRES_DB:-yup}
+      CMS_RENDER_PORT: ${CMS_RENDER_PORT:-3002}
+      CMS_THEME: ${CMS_THEME:-default}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${CMS_RENDER_PORT:-3002}:${CMS_RENDER_PORT:-3002}"
+    restart: unless-stopped
+
   # Delivers webhook events from the outbox with retries. Required for webhooks.
   worker:
     build: .

@@ -145,6 +145,7 @@ src/
   api/       server.ts — read-only HTTP API + asset serving (the public surface)
   admin/     server.ts + dashboard — human admin UI + admin API (oversight)
   plugins/   plugin system + bundled example plugins
+  render/    optional theme-based HTML rendering server
   scripts/   setup · migrate · worker · seed · smoke-{webhooks,assets,admin} · webhook-listener
 drizzle/     SQL migrations (reproducible installs)
 Dockerfile · docker-compose.yml
@@ -199,6 +200,23 @@ This is deliberately keyed on author attribution (`human` vs `agent`), so the sa
 mechanism that records *who* changed content also decides *who may ship it*. It
 emits `entry.review_requested`, `review.approved`, and `review.rejected` events,
 so an approval can itself kick off downstream automation.
+
+## Themes & rendering (optional)
+
+Yup CMS is headless-first, but it can also **render HTML pages** itself — run
+`npm run render` (default port 3002, or the `render` compose service):
+
+```
+GET /              index of content types
+GET /:type         list of published entries
+GET /:type/:slug   a single entry      (?locale= to localize)
+```
+
+Pages are produced by a **theme** (`CMS_THEME`, default `default`). A theme is a
+module with `renderIndex` / `renderList` / `renderEntry` functions; custom themes
+register themselves on load (and can ship as plugins). The render server reads
+only published content, resolves references, and is fully optional — your own
+front-end consuming the REST/GraphQL API remains first-class.
 
 ## Plugins (extend the core)
 
@@ -457,6 +475,7 @@ Storage backends are configured with `CMS_STORAGE_BACKEND`:
 - ✅ Distributed (Redis-backed) rate limiting for multi-instance deployments.
 - ✅ Multi-tenancy — isolated workspaces across every surface.
 - ✅ Plugin system — custom field types, lifecycle hooks, and MCP tools.
+- ✅ Themes & server-side rendering (optional HTML pages) + full editing GUI.
 - Plugin marketplace (signed discovery + install) on top of the manifest format.
 
 ## Contributing
