@@ -21,6 +21,7 @@ import { NotFoundError, ValidationError } from "../core/content.js";
  *   GET /entries/:id                   one entry by id  (?resolve=true)
  *   GET /assets                        list asset metadata
  *   GET /assets/:id                    stream an asset's bytes
+ *   GET /search?q=&type=              full-text search over entries
  *   POST /graphql                      GraphQL read queries
  *
  * Writes happen through the MCP server, never here — this surface only reads.
@@ -225,6 +226,23 @@ const server = createServer(async (req, res) => {
       });
       res.end(bytes);
       return;
+    }
+
+    // /search?q=&type=&status=&limit=
+    if (seg[0] === "search" && seg.length === 1) {
+      const qstr = q.get("q");
+      if (!qstr) return send(res, 400, { error: "?q= is required" });
+      return send(
+        res,
+        200,
+        await read.search({
+          q: qstr,
+          type: q.get("type") ?? undefined,
+          status,
+          limit: num(q.get("limit")),
+          tenantId,
+        }),
+      );
     }
 
     // /content/:type and /content/:type/:slug

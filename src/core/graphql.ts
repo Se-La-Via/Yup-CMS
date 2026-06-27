@@ -99,6 +99,23 @@ const root = {
     return e ? mapEntry(e, args.type) : null;
   },
 
+  search: async (
+    args: { q: string; type?: string; status?: string; limit?: number },
+    ctx: GraphQLContext,
+  ) => {
+    requireForStatus(args.status, ctx);
+    const rows = await read.search({
+      q: args.q,
+      type: args.type,
+      status: (args.status as read.Status) ?? "published",
+      limit: args.limit,
+      tenantId: ctx.tenantId,
+    });
+    return Promise.all(
+      rows.map(async (r) => mapEntry(r, await typeNameOf(r.typeId))),
+    );
+  },
+
   assets: ({ limit }: { limit?: number }, ctx: GraphQLContext) =>
     assets.listAssets(ctx.tenantId, limit ?? 50),
 };

@@ -125,7 +125,7 @@ src/
   db/        schema.ts (7 tables) · client.ts · migrate via drizzle-orm
   core/      validation · content (writes+revisions) · events (outbox+worker)
              · policy · backoff · read · graphql · ratelimit · auth · assets · storage
-  mcp/       server.ts — 29 MCP tools (the write/control plane for agents)
+  mcp/       server.ts — 30 MCP tools (the write/control plane for agents)
   api/       server.ts — read-only HTTP API + asset serving (the public surface)
   admin/     server.ts + dashboard — human admin UI + admin API (oversight)
   scripts/   setup · migrate · worker · seed · smoke-{webhooks,assets,admin} · webhook-listener
@@ -274,6 +274,7 @@ Agents *write* through MCP; websites and apps *read* through a plain HTTP API.
 | `GET /content/:type` | entries of a type — **published by default** |
 | `GET /content/:type/:slug` | one entry by slug |
 | `GET /entries/:id` | one entry by id |
+| `GET /search?q=&type=` | full-text search over entries |
 
 Query params: `?status=` (default `published`), `?slug=`, `?limit=`, `?offset=`,
 and `?resolve=true` to expand `reference` fields into the referenced published

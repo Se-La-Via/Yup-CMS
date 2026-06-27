@@ -65,6 +65,8 @@ jobs:
       - run: npm run smoke:schedule
       # Proves tenant isolation across content, GraphQL, webhooks, and assets.
       - run: npm run smoke:tenant
+      # Exercises full-text search.
+      - run: npm run smoke:search
 
   ratelimit-redis:
     name: rate limiter on Redis

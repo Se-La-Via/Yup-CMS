@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
 import {
   contentTypes,
@@ -70,6 +70,38 @@ export async function getBySlug(input: {
     );
   }
   return entry;
+}
+
+/**
+ * Full-text search over entry data within a tenant. Matches a text query against
+ * the entry's JSON contents. Defaults to published; an optional type narrows it.
+ *
+ * Uses Postgres full-text search at query time. For large datasets, add a GIN
+ * index on `to_tsvector('simple', data::text)`.
+ */
+export async function search(input: {
+  q: string;
+  type?: string;
+  status?: Status;
+  limit?: number;
+  tenantId?: string;
+}) {
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const conditions = [
+    eq(contentEntries.tenantId, tenantId),
+    eq(contentEntries.status, input.status ?? "published"),
+    sql`to_tsvector('simple', ${contentEntries.data}::text) @@ websearch_to_tsquery('simple', ${input.q})`,
+  ];
+  if (input.type) {
+    const type = await getContentType(input.type, tenantId);
+    conditions.push(eq(contentEntries.typeId, type.id));
+  }
+  return db
+    .select()
+    .from(contentEntries)
+    .where(and(...conditions))
+    .orderBy(desc(contentEntries.updatedAt))
+    .limit(input.limit ?? 20);
 }
 
 export async function getById(input: {

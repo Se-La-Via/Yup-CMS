@@ -42,6 +42,7 @@ const SDL = /* GraphQL */ `
     entries(type: String!, status: String, limit: Int, offset: Int): [Entry!]!
     entry(id: ID!): Entry
     entryBySlug(type: String!, slug: String!, status: String): Entry
+    search(q: String!, type: String, status: String, limit: Int): [Entry!]!
     assets(limit: Int): [Asset!]!
   }
 `;

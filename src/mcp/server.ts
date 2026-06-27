@@ -8,6 +8,7 @@ import * as events from "../core/events.js";
 import * as auth from "../core/auth.js";
 import * as assets from "../core/assets.js";
 import * as tenant from "../core/tenant.js";
+import * as read from "../core/read.js";
 
 const server = new McpServer({
   name: "yup-cms",
@@ -150,6 +151,24 @@ server.registerTool(
     },
   },
   tool(async (args) => content.listEntries({ ...args, tenantId: TENANT_ID })),
+);
+
+server.registerTool(
+  "search_entries",
+  {
+    title: "Search entries",
+    description:
+      "Full-text search over entry content within this tenant. Optionally narrow by type and status (default published).",
+    inputSchema: {
+      q: z.string().describe("search query"),
+      type: z.string().optional(),
+      status: z
+        .enum(["draft", "scheduled", "pending_review", "published", "archived"])
+        .optional(),
+      limit: z.number().int().positive().max(100).optional(),
+    },
+  },
+  tool(async (args) => read.search({ ...args, tenantId: TENANT_ID })),
 );
 
 server.registerTool(
