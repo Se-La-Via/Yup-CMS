@@ -64,9 +64,9 @@ function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   });
 }
 
-function rateLimited(req: IncomingMessage): { retryAfter: number } | null {
+async function rateLimited(req: IncomingMessage): Promise<{ retryAfter: number } | null> {
   if (!limiter) return null;
-  const r = limiter.check(clientKey(req), Date.now());
+  const r = await limiter.check(clientKey(req), Date.now());
   return r.allowed ? null : { retryAfter: Math.ceil(r.retryAfterMs / 1000) };
 }
 
@@ -96,7 +96,7 @@ const server = createServer(async (req, res) => {
 
   // GraphQL read endpoint (POST). Read-only — queries only.
   if (req.method === "POST" && url.pathname === "/graphql") {
-    const limited = rateLimited(req);
+    const limited = await rateLimited(req);
     if (limited) {
       return send(res, 429, { error: "rate limit exceeded" }, {
         "retry-after": String(limited.retryAfter),
@@ -140,7 +140,7 @@ const server = createServer(async (req, res) => {
     }
 
     // --- Rate limiting ----------------------------------------------------
-    const limited = rateLimited(req);
+    const limited = await rateLimited(req);
     if (limited) {
       return send(
         res,

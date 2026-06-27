@@ -317,8 +317,9 @@ curl -H "Authorization: Bearer yup_..." \
 The read API is rate-limited per client IP with a token bucket (default **120
 requests / 60s**; tune with `CMS_RATE_LIMIT` and `CMS_RATE_WINDOW_MS`, or set
 `CMS_RATE_LIMIT=0` to disable). Over the limit returns `429` with a `Retry-After`
-header; `/health` is exempt. The limiter is per-process — front a multi-instance
-fleet with a shared store (e.g. Redis) if you need a global limit.
+header; `/health` is exempt. By default the limiter is per-process; set
+`CMS_RATE_BACKEND=redis` with `CMS_REDIS_URL` for a **single shared limit across
+a horizontally-scaled fleet** (atomic token bucket via a Redis Lua script).
 
 ## Admin dashboard (for humans)
 
@@ -381,7 +382,8 @@ Storage backends are configured with `CMS_STORAGE_BACKEND`:
 - ✅ Unique field constraints.
 - ✅ GraphQL read layer alongside REST.
 - ✅ Scheduled publishing (publish at a future time via the worker).
-- Multi-tenant scoping; distributed (Redis-backed) rate limiting.
+- ✅ Distributed (Redis-backed) rate limiting for multi-instance deployments.
+- Multi-tenant scoping.
 
 ## Contributing
 

@@ -28,6 +28,7 @@
     "smoke:unique": "tsx src/scripts/smoke-unique.ts",
     "smoke:graphql": "tsx src/scripts/smoke-graphql.ts",
     "smoke:schedule": "tsx src/scripts/smoke-schedule.ts",
+    "smoke:ratelimit-redis": "tsx src/scripts/smoke-ratelimit-redis.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/scripts/migrate.ts",
@@ -43,6 +44,7 @@
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.36.0",
     "graphql": "^16.9.0",
+    "ioredis": "^5.4.1",
     "postgres": "^3.4.5",
     "zod": "^3.23.8"
   },
