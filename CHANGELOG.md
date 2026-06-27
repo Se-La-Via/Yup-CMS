@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] — 2026-06-27
+
+### Added
+- **Signed marketplace packages** — a registry signs each item with an ed25519
+  key (`npm run marketplace:keygen`); set `CMS_REGISTRY_PRIVATE_KEY` to sign on
+  publish and `CMS_REGISTRY_PUBLIC_KEY` on installers to require a valid
+  signature (tampered/unsigned installs are refused).
+- **Remote registry sync** — a registry is just another Yup CMS; pull its
+  catalog with `npm run marketplace:sync <url>`, `POST /api/marketplace/sync`, or
+  the MCP `marketplace_sync` tool. Signatures are verified on import; forged
+  items are skipped.
+
+### Notes
+- Migration `0007` adds a `signature` column to marketplace items (additive).
+
 ## [0.5.0] — 2026-06-27
 
 Extensibility, a real editing UI, server-side rendering, and an admin copilot.
@@ -124,6 +139,7 @@ reversible.
   tests (migrations, the end-to-end demo, the webhook pipeline, and assets on
   both local and S3/MinIO backends) against real services.
 
+[0.6.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.3.0
