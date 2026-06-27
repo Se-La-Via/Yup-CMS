@@ -34,6 +34,7 @@ export const DASHBOARD_HTML = `<!doctype html>
 <body>
 <header>
   <h1>Yup CMS <span class="muted">Admin</span></h1>
+  <span id="tenant" class="pill" hidden></span>
   <div class="spacer"></div>
   <input id="key" type="password" placeholder="admin API key" style="width:280px" />
   <button class="btn" onclick="saveKey()">Connect</button>
@@ -43,6 +44,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   <button data-tab="content" onclick="go('content')">Content</button>
   <button data-tab="webhooks" onclick="go('webhooks')">Webhooks</button>
   <button data-tab="assets" onclick="go('assets')">Assets</button>
+  <button data-tab="tenants" onclick="go('tenants')">Tenants</button>
 </nav>
 <div id="err" class="err" hidden></div>
 <main id="main">Enter your admin API key to begin.</main>
@@ -70,11 +72,33 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
+async function refreshTenant() {
+  const el = $("#tenant");
+  if (!KEY) { el.hidden = true; return; }
+  try {
+    const me = await api("/whoami");
+    el.textContent = "tenant: " + (me.tenant || me.tenantId);
+    el.hidden = false;
+  } catch { el.hidden = true; }
+}
+
 function go(tab) {
   TAB = tab;
   document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   if (!KEY) { $("#main").textContent = "Enter your admin API key to begin."; return; }
-  ({ reviews: renderReviews, content: renderContent, webhooks: renderWebhooks, assets: renderAssets }[tab])();
+  refreshTenant();
+  ({ reviews: renderReviews, content: renderContent, webhooks: renderWebhooks, assets: renderAssets, tenants: renderTenants }[tab])();
+}
+
+async function renderTenants() {
+  showErr("");
+  try {
+    const rows = await api("/tenants");
+    $("#main").innerHTML = "<p class=muted>Your admin key is scoped to one tenant; connect with a key from another tenant to manage it.</p>" +
+      "<table><tr><th>Slug</th><th>Name</th><th>Created</th></tr>" +
+      rows.map((t) => "<tr><td><code>" + esc(t.slug) + "</code></td><td>" + esc(t.name) +
+        "</td><td class=muted>" + esc(t.createdAt) + "</td></tr>").join("") + "</table>";
+  } catch (e) { showErr(e.message); }
 }
 
 async function renderReviews() {

@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createHash } from "node:crypto";
 import * as read from "../core/read.js";
 import * as content from "../core/content.js";
 import * as auth from "../core/auth.js";
@@ -94,13 +95,23 @@ function num(v: string | null): number | undefined {
 
 const limiter = createLimiterFromEnv();
 
-/** Identify the caller for rate limiting: first proxied IP, else socket addr. */
-function clientKey(req: import("node:http").IncomingMessage): string {
+/**
+ * Identify the caller for rate limiting. Authenticated callers are limited per
+ * API key (so each key/tenant gets its own budget); anonymous callers per IP.
+ */
+function clientKey(req: IncomingMessage): string {
+  const authz = req.headers.authorization;
+  const token = authz?.startsWith("Bearer ")
+    ? authz.slice(7)
+    : (req.headers["x-api-key"] as string | undefined);
+  if (token) {
+    return "key:" + createHash("sha256").update(token).digest("hex").slice(0, 16);
+  }
   const xff = req.headers["x-forwarded-for"];
   if (typeof xff === "string" && xff.length > 0) {
-    return xff.split(",")[0]!.trim();
+    return "ip:" + xff.split(",")[0]!.trim();
   }
-  return req.socket.remoteAddress ?? "unknown";
+  return "ip:" + (req.socket.remoteAddress ?? "unknown");
 }
 
 const server = createServer(async (req, res) => {

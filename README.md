@@ -335,8 +335,9 @@ curl -H "Authorization: Bearer yup_..." \
 
 ### Rate limiting
 
-The read API is rate-limited per client IP with a token bucket (default **120
-requests / 60s**; tune with `CMS_RATE_LIMIT` and `CMS_RATE_WINDOW_MS`, or set
+The read API is rate-limited with a token bucket — **per API key** when
+authenticated (so each key/tenant gets its own budget), else per client IP
+(default **120 requests / 60s**; tune with `CMS_RATE_LIMIT` and `CMS_RATE_WINDOW_MS`, or set
 `CMS_RATE_LIMIT=0` to disable). Over the limit returns `429` with a `Retry-After`
 header; `/health` is exempt. By default the limiter is per-process; set
 `CMS_RATE_BACKEND=redis` with `CMS_REDIS_URL` for a **single shared limit across
@@ -351,7 +352,7 @@ is a single dependency-free page where a human reviewer can:
 - see the **pending review queue** and **approve/reject** — the key
   human-in-the-loop action behind the review gate;
 - browse content by type and **publish/unpublish/delete** entries;
-- inspect webhooks and their delivery log, and list assets.
+- inspect webhooks and their delivery log, list assets, and view tenants.
 
 Every admin action requires an **`admin`-scoped API key** (mint one with the MCP
 tool `create_api_key`); the dashboard prompts for it and stores it locally. The

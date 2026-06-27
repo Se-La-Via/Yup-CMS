@@ -4,6 +4,7 @@ import * as content from "../core/content.js";
 import * as events from "../core/events.js";
 import * as assets from "../core/assets.js";
 import * as auth from "../core/auth.js";
+import * as tenantsvc from "../core/tenant.js";
 import { NotFoundError, ValidationError } from "../core/content.js";
 import { DASHBOARD_HTML } from "./dashboard.js";
 
@@ -79,6 +80,14 @@ export function createAdminServer() {
 
     try {
       // --- reads ---
+      if (method === "GET" && path[0] === "whoami") {
+        const all = await tenantsvc.listTenants();
+        const current = all.find((t) => t.id === tenantId);
+        return json(res, 200, { key: key.name, tenantId, tenant: current?.slug ?? null });
+      }
+      if (method === "GET" && path[0] === "tenants") {
+        return json(res, 200, await tenantsvc.listTenants());
+      }
       if (method === "GET" && path[0] === "types") {
         return json(res, 200, await content.listContentTypes(tenantId));
       }
