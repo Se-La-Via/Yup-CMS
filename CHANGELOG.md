@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] — 2026-06-27
+
+### Added
+- **Multi-tenancy** — every row belongs to a tenant (workspace) and every query
+  is scoped to one; content, revisions, reviews, webhooks, assets, and API keys
+  are isolated. A built-in `default` tenant keeps single-tenant installs
+  config-free. Agents select a tenant with `CMS_TENANT`; the read API/GraphQL use
+  the API key's tenant or an `X-Tenant` header. `create_tenant`/`list_tenants`
+  tools. A CI test asserts cross-tenant isolation.
+- **GraphQL read layer** at `POST /graphql` (queries only) alongside REST, with
+  the same auth and rate limiting.
+- **Scheduled publishing** — `schedule_publish`/`cancel_schedule`; the worker
+  publishes entries when their time comes.
+- **Distributed rate limiting** — `CMS_RATE_BACKEND=redis` for a shared limit
+  across instances (atomic token bucket via a Redis Lua script).
+
+### Notes
+- Migrations are additive; `docker compose up -d --build` applies them. Existing
+  data is assigned to the `default` tenant automatically.
+
 ## [0.2.0] — 2026-06-27
 
 ### Added
@@ -64,5 +84,6 @@ reversible.
   tests (migrations, the end-to-end demo, the webhook pipeline, and assets on
   both local and S3/MinIO backends) against real services.
 
+[0.3.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Se-La-Via/Yup-CMS/releases/tag/v0.1.0
