@@ -125,7 +125,7 @@ src/
   db/        schema.ts (7 tables) · client.ts · migrate via drizzle-orm
   core/      validation · content (writes+revisions) · events (outbox+worker)
              · policy · backoff · read · graphql · ratelimit · auth · assets · storage
-  mcp/       server.ts — 27 MCP tools (the write/control plane for agents)
+  mcp/       server.ts — 29 MCP tools (the write/control plane for agents)
   api/       server.ts — read-only HTTP API + asset serving (the public surface)
   admin/     server.ts + dashboard — human admin UI + admin API (oversight)
   scripts/   setup · migrate · worker · seed · smoke-{webhooks,assets,admin} · webhook-listener
@@ -178,6 +178,22 @@ This is deliberately keyed on author attribution (`human` vs `agent`), so the sa
 mechanism that records *who* changed content also decides *who may ship it*. It
 emits `entry.review_requested`, `review.approved`, and `review.rejected` events,
 so an approval can itself kick off downstream automation.
+
+## Multi-tenancy
+
+Every row belongs to a **tenant** (workspace), and every query is scoped to one —
+content, revisions, reviews, webhooks, assets, and API keys are all isolated. A
+built-in `default` tenant means single-tenant installs need no configuration.
+
+- **Agents:** point an MCP connection at a tenant with `CMS_TENANT=<slug>`; all
+  its operations are confined to that tenant. Create tenants with the
+  `create_tenant` tool.
+- **Read API / GraphQL:** the tenant comes from the API key's tenant, or an
+  `X-Tenant: <slug>` header for anonymous published reads, else `default`.
+- **Admin:** scoped to the admin key's tenant.
+
+Isolation is covered by a dedicated CI test that asserts one tenant cannot see
+another's data through any surface.
 
 ## Trust model
 
@@ -383,7 +399,7 @@ Storage backends are configured with `CMS_STORAGE_BACKEND`:
 - ✅ GraphQL read layer alongside REST.
 - ✅ Scheduled publishing (publish at a future time via the worker).
 - ✅ Distributed (Redis-backed) rate limiting for multi-instance deployments.
-- Multi-tenant scoping.
+- ✅ Multi-tenancy — isolated workspaces across every surface.
 
 ## Contributing
 

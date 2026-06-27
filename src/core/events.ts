@@ -1,7 +1,12 @@
 import { createHmac } from "node:crypto";
 import { and, desc, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { webhooks, webhookDeliveries, eventOutbox } from "../db/schema.js";
+import {
+  webhooks,
+  webhookDeliveries,
+  eventOutbox,
+  DEFAULT_TENANT_ID,
+} from "../db/schema.js";
 import { nextBackoffMs, isExhausted } from "./backoff.js";
 
 /**
@@ -46,6 +51,7 @@ export async function registerWebhook(input: {
   url: string;
   events?: string[];
   secret?: string;
+  tenantId?: string;
 }) {
   if (!/^https?:\/\//.test(input.url)) {
     throw new Error("webhook url must start with http:// or https://");
@@ -62,6 +68,7 @@ export async function registerWebhook(input: {
   const [hook] = await db
     .insert(webhooks)
     .values({
+      tenantId: input.tenantId ?? DEFAULT_TENANT_ID,
       name: input.name,
       url: input.url,
       events: input.events ?? [],
@@ -71,28 +78,37 @@ export async function registerWebhook(input: {
   return hook;
 }
 
-export async function listWebhooks() {
-  return db.select().from(webhooks).orderBy(webhooks.createdAt);
+export async function listWebhooks(tenantId: string = DEFAULT_TENANT_ID) {
+  return db
+    .select()
+    .from(webhooks)
+    .where(eq(webhooks.tenantId, tenantId))
+    .orderBy(webhooks.createdAt);
 }
 
-export async function deleteWebhook(id: string) {
+export async function deleteWebhook(id: string, tenantId: string = DEFAULT_TENANT_ID) {
   const [deleted] = await db
     .delete(webhooks)
-    .where(eq(webhooks.id, id))
+    .where(and(eq(webhooks.id, id), eq(webhooks.tenantId, tenantId)))
     .returning();
   if (!deleted) throw new Error(`webhook "${id}" not found`);
   return { deleted: true, id };
 }
 
-export async function getDeliveries(input: { webhookId?: string; limit?: number }) {
-  const q = db.select().from(webhookDeliveries);
-  const rows = input.webhookId
-    ? await q
-        .where(eq(webhookDeliveries.webhookId, input.webhookId))
-        .orderBy(desc(webhookDeliveries.createdAt))
-        .limit(input.limit ?? 50)
-    : await q.orderBy(desc(webhookDeliveries.createdAt)).limit(input.limit ?? 50);
-  return rows;
+export async function getDeliveries(input: {
+  webhookId?: string;
+  limit?: number;
+  tenantId?: string;
+}) {
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const conds = [eq(webhookDeliveries.tenantId, tenantId)];
+  if (input.webhookId) conds.push(eq(webhookDeliveries.webhookId, input.webhookId));
+  return db
+    .select()
+    .from(webhookDeliveries)
+    .where(and(...conds))
+    .orderBy(desc(webhookDeliveries.createdAt))
+    .limit(input.limit ?? 50);
 }
 
 // ---------------------------------------------------------------------------
@@ -109,8 +125,9 @@ export async function recordEvent(
   tx: Tx,
   event: EventType,
   data: Record<string, unknown>,
+  tenantId: string = DEFAULT_TENANT_ID,
 ) {
-  await tx.insert(eventOutbox).values({ event, data });
+  await tx.insert(eventOutbox).values({ tenantId, event, data });
 }
 
 // ---------------------------------------------------------------------------
@@ -127,9 +144,9 @@ export async function dispatchOutbox(limit = 100): Promise<number> {
     .limit(limit);
   if (rows.length === 0) return 0;
 
-  const hooks = await listWebhooks();
-
   for (const row of rows) {
+    // Only the event's OWN tenant's webhooks may receive it — no cross-tenant leak.
+    const hooks = await listWebhooks(row.tenantId);
     const matches = hooks.filter(
       (w) => w.active && (w.events.length === 0 || w.events.includes(row.event)),
     );
@@ -142,6 +159,7 @@ export async function dispatchOutbox(limit = 100): Promise<number> {
     await db.transaction(async (tx) => {
       for (const w of matches) {
         await tx.insert(webhookDeliveries).values({
+          tenantId: row.tenantId,
           webhookId: w.id,
           event: row.event,
           payload: payload as unknown as Record<string, unknown>,

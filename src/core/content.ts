@@ -5,6 +5,7 @@ import {
   contentEntries,
   contentRevisions,
   reviewRequests,
+  DEFAULT_TENANT_ID,
   type FieldDef,
 } from "../db/schema.js";
 import {
@@ -41,6 +42,11 @@ function defaultAuthor(override?: Partial<Author>): Author {
     id: override?.id ?? process.env.CMS_PRINCIPAL_ID ?? "agent",
     note: override?.note,
   };
+}
+
+/** Resolve the tenant for an operation; everything is scoped to it. */
+function tid(input?: { tenantId?: string }): string {
+  return input?.tenantId ?? DEFAULT_TENANT_ID;
 }
 
 export class NotFoundError extends Error {
@@ -94,15 +100,22 @@ async function checkUnique(
 // Content types
 // ---------------------------------------------------------------------------
 
-export async function listContentTypes() {
-  return db.select().from(contentTypes).orderBy(contentTypes.name);
+export async function listContentTypes(tenantId: string = DEFAULT_TENANT_ID) {
+  return db
+    .select()
+    .from(contentTypes)
+    .where(eq(contentTypes.tenantId, tenantId))
+    .orderBy(contentTypes.name);
 }
 
-export async function getContentType(name: string) {
+export async function getContentType(
+  name: string,
+  tenantId: string = DEFAULT_TENANT_ID,
+) {
   const [type] = await db
     .select()
     .from(contentTypes)
-    .where(eq(contentTypes.name, name));
+    .where(and(eq(contentTypes.name, name), eq(contentTypes.tenantId, tenantId)));
   if (!type) throw new NotFoundError(`content type "${name}" not found`);
   return type;
 }
@@ -113,6 +126,7 @@ export async function createContentType(input: {
   description?: string;
   fields: FieldDef[];
   requireApproval?: boolean;
+  tenantId?: string;
 }) {
   if (!/^[a-z][a-z0-9_]*$/.test(input.name)) {
     throw new ValidationError([
@@ -120,11 +134,13 @@ export async function createContentType(input: {
     ]);
   }
   validateFieldDefs(input.fields);
+  const tenantId = tid(input);
 
   return db.transaction(async (tx) => {
     const [created] = await tx
       .insert(contentTypes)
       .values({
+        tenantId,
         name: input.name,
         displayName: input.displayName,
         description: input.description,
@@ -132,7 +148,7 @@ export async function createContentType(input: {
         requireApproval: input.requireApproval ?? false,
       })
       .returning();
-    await recordEvent(tx, "type.created", { type: created });
+    await recordEvent(tx, "type.created", { type: created }, tenantId);
     return created!;
   });
 }
@@ -146,9 +162,14 @@ export async function listEntries(input: {
   status?: "draft" | "scheduled" | "pending_review" | "published" | "archived";
   limit?: number;
   offset?: number;
+  tenantId?: string;
 }) {
-  const type = await getContentType(input.type);
-  const conditions = [eq(contentEntries.typeId, type.id)];
+  const tenantId = tid(input);
+  const type = await getContentType(input.type, tenantId);
+  const conditions = [
+    eq(contentEntries.tenantId, tenantId),
+    eq(contentEntries.typeId, type.id),
+  ];
   if (input.status) conditions.push(eq(contentEntries.status, input.status));
 
   return db
@@ -160,17 +181,20 @@ export async function listEntries(input: {
     .offset(input.offset ?? 0);
 }
 
-export async function getEntry(id: string) {
+export async function getEntry(id: string, tenantId: string = DEFAULT_TENANT_ID) {
   const [entry] = await db
     .select()
     .from(contentEntries)
-    .where(eq(contentEntries.id, id));
+    .where(and(eq(contentEntries.id, id), eq(contentEntries.tenantId, tenantId)));
   if (!entry) throw new NotFoundError(`entry "${id}" not found`);
   return entry;
 }
 
-export async function getEntryHistory(id: string) {
-  await getEntry(id); // ensure it exists
+export async function getEntryHistory(
+  id: string,
+  tenantId: string = DEFAULT_TENANT_ID,
+) {
+  await getEntry(id, tenantId); // ensure it exists in this tenant
   return db
     .select()
     .from(contentRevisions)
@@ -184,17 +208,20 @@ export async function createEntry(input: {
   slug?: string;
   status?: "draft" | "published";
   author?: Partial<Author>;
+  tenantId?: string;
 }) {
-  const type = await getContentType(input.type);
+  const tenantId = tid(input);
+  const type = await getContentType(input.type, tenantId);
   const clean = validateEntryData(type.fields, input.data);
   const author = defaultAuthor(input.author);
   const status = input.status ?? "draft";
 
-  const entry = await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     await checkUnique(tx, type.id, type.fields, clean);
     const [entry] = await tx
       .insert(contentEntries)
       .values({
+        tenantId,
         typeId: type.id,
         slug: input.slug,
         data: clean,
@@ -214,25 +241,25 @@ export async function createEntry(input: {
       note: author.note,
     });
 
-    await recordEvent(tx, "entry.created", { entry: entry!, author });
+    await recordEvent(tx, "entry.created", { entry: entry! }, tenantId);
     return entry!;
   });
-
-  return entry;
 }
 
 export async function updateEntry(input: {
   id: string;
   data: Record<string, unknown>;
   author?: Partial<Author>;
+  tenantId?: string;
 }) {
   const author = defaultAuthor(input.author);
+  const tenantId = tid(input);
 
-  const updated = await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const [entry] = await tx
       .select()
       .from(contentEntries)
-      .where(eq(contentEntries.id, input.id));
+      .where(and(eq(contentEntries.id, input.id), eq(contentEntries.tenantId, tenantId)));
     if (!entry) throw new NotFoundError(`entry "${input.id}" not found`);
 
     const [type] = await tx
@@ -240,10 +267,7 @@ export async function updateEntry(input: {
       .from(contentTypes)
       .where(eq(contentTypes.id, entry.typeId));
 
-    // Partial update: validate only the supplied fields, then merge.
-    const validated = validateEntryData(type!.fields, input.data, {
-      partial: true,
-    });
+    const validated = validateEntryData(type!.fields, input.data, { partial: true });
     await checkUnique(tx, entry.typeId, type!.fields, validated, entry.id);
     const merged = { ...entry.data, ...validated };
     const nextRevision = entry.revision + 1;
@@ -265,26 +289,24 @@ export async function updateEntry(input: {
       note: author.note,
     });
 
-    await recordEvent(tx, "entry.updated", { entry: updated!, author });
+    await recordEvent(tx, "entry.updated", { entry: updated! }, tenantId);
     return updated!;
   });
-
-  return updated;
 }
 
 export async function setEntryStatus(input: {
   id: string;
   status: "draft" | "published" | "archived";
   author?: Partial<Author>;
+  tenantId?: string;
 }) {
   const author = defaultAuthor(input.author);
+  const tenantId = tid(input);
 
-  // Review gate: an agent publishing a type that requires approval does not
-  // publish — it queues a request for a human. Humans/system bypass the gate
-  // (they are the approval). `author.type` is established by the trusted
-  // boundary, so an agent cannot spoof its way past this.
+  // Review gate: an agent publishing an approval-gated type does not publish —
+  // it queues a request for a human. Humans/system bypass (they are the approval).
   if (input.status === "published") {
-    const entry = await getEntry(input.id);
+    const entry = await getEntry(input.id, tenantId);
     const [type] = await db
       .select()
       .from(contentTypes)
@@ -294,11 +316,11 @@ export async function setEntryStatus(input: {
     }
   }
 
-  const updated = await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const [entry] = await tx
       .select()
       .from(contentEntries)
-      .where(eq(contentEntries.id, input.id));
+      .where(and(eq(contentEntries.id, input.id), eq(contentEntries.tenantId, tenantId)));
     if (!entry) throw new NotFoundError(`entry "${input.id}" not found`);
 
     const nextRevision = entry.revision + 1;
@@ -325,33 +347,31 @@ export async function setEntryStatus(input: {
         : input.status === "archived"
           ? "entry.archived"
           : "entry.unpublished";
-    await recordEvent(tx, statusEvent, { entry: updated!, author });
+    await recordEvent(tx, statusEvent, { entry: updated! }, tenantId);
     return updated!;
   });
-
-  return updated;
 }
 
 /**
  * Permanently delete an entry and its revision history (cascades). This is a
- * hard delete — for a reversible "remove from view", set the status to archived
- * instead.
+ * hard delete — for a reversible "remove from view", set the status to archived.
  */
 export async function deleteEntry(input: {
   id: string;
   author?: Partial<Author>;
+  tenantId?: string;
 }) {
   const author = defaultAuthor(input.author);
+  const tenantId = tid(input);
 
   return db.transaction(async (tx) => {
     const [entry] = await tx
       .select()
       .from(contentEntries)
-      .where(eq(contentEntries.id, input.id));
+      .where(and(eq(contentEntries.id, input.id), eq(contentEntries.tenantId, tenantId)));
     if (!entry) throw new NotFoundError(`entry "${input.id}" not found`);
 
-    // Record the event before the row (and its revisions) are gone.
-    await recordEvent(tx, "entry.deleted", { entry, author });
+    await recordEvent(tx, "entry.deleted", { entry }, tenantId);
     await tx.delete(contentEntries).where(eq(contentEntries.id, entry.id));
 
     return { deleted: true, id: entry.id };
@@ -362,24 +382,24 @@ export async function deleteEntry(input: {
 // Scheduled publishing
 // ---------------------------------------------------------------------------
 
-/** Schedule an entry to publish automatically at a future time. */
 export async function schedulePublish(input: {
   id: string;
   publishAt: string;
   author?: Partial<Author>;
+  tenantId?: string;
 }) {
   const author = defaultAuthor(input.author);
+  const tenantId = tid(input);
   const when = new Date(input.publishAt);
   if (Number.isNaN(when.getTime())) {
     throw new ValidationError(["publishAt must be an ISO date-time string"]);
   }
 
-  const entry = await getEntry(input.id);
+  const entry = await getEntry(input.id, tenantId);
   const [type] = await db
     .select()
     .from(contentTypes)
     .where(eq(contentTypes.id, entry.typeId));
-  // Respect the review gate: an agent cannot schedule approval-gated content.
   if (type?.requireApproval && author.type === "agent") {
     throw new ValidationError([
       "agents cannot schedule approval-gated content; request a review instead",
@@ -403,23 +423,28 @@ export async function schedulePublish(input: {
       authorId: author.id,
       note: author.note,
     });
-    await recordEvent(tx, "entry.scheduled", {
-      entry: updated!,
-      publishAt: when.toISOString(),
-      author,
-    });
+    await recordEvent(
+      tx,
+      "entry.scheduled",
+      { entry: updated!, publishAt: when.toISOString() },
+      tenantId,
+    );
     return updated!;
   });
 }
 
-/** Cancel a scheduled publish, returning the entry to draft. */
-export async function cancelSchedule(input: { id: string; author?: Partial<Author> }) {
+export async function cancelSchedule(input: {
+  id: string;
+  author?: Partial<Author>;
+  tenantId?: string;
+}) {
   const author = defaultAuthor(input.author);
+  const tenantId = tid(input);
   return db.transaction(async (tx) => {
     const [entry] = await tx
       .select()
       .from(contentEntries)
-      .where(eq(contentEntries.id, input.id));
+      .where(and(eq(contentEntries.id, input.id), eq(contentEntries.tenantId, tenantId)));
     if (!entry) throw new NotFoundError(`entry "${input.id}" not found`);
     if (entry.status !== "scheduled") {
       throw new ValidationError(["entry is not scheduled"]);
@@ -440,14 +465,14 @@ export async function cancelSchedule(input: { id: string; author?: Partial<Autho
       authorId: author.id,
       note: author.note,
     });
-    await recordEvent(tx, "entry.updated", { entry: updated!, author });
+    await recordEvent(tx, "entry.updated", { entry: updated! }, tenantId);
     return updated!;
   });
 }
 
 /**
- * Publish any scheduled entries whose time has come. Called by the worker.
- * Returns how many were published.
+ * Publish any scheduled entries whose time has come — across all tenants (this
+ * is infrastructure). Each event is recorded under its own entry's tenant.
  */
 export async function publishScheduledDue(limit = 100): Promise<number> {
   const due = await db
@@ -479,10 +504,7 @@ export async function publishScheduledDue(limit = 100): Promise<number> {
         authorId: "scheduler",
         note: "Scheduled publish",
       });
-      await recordEvent(tx, "entry.published", {
-        entry: updated!,
-        author: { type: "system", id: "scheduler" },
-      });
+      await recordEvent(tx, "entry.published", { entry: updated! }, entry.tenantId);
     });
   }
   return due.length;
@@ -493,14 +515,16 @@ export async function revertEntry(input: {
   id: string;
   toRevision: number;
   author?: Partial<Author>;
+  tenantId?: string;
 }) {
   const author = defaultAuthor(input.author);
+  const tenantId = tid(input);
 
-  const updated = await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const [entry] = await tx
       .select()
       .from(contentEntries)
-      .where(eq(contentEntries.id, input.id));
+      .where(and(eq(contentEntries.id, input.id), eq(contentEntries.tenantId, tenantId)));
     if (!entry) throw new NotFoundError(`entry "${input.id}" not found`);
 
     const [target] = await tx
@@ -536,15 +560,14 @@ export async function revertEntry(input: {
       note: author.note ?? `Reverted to revision ${input.toRevision}`,
     });
 
-    await recordEvent(tx, "entry.reverted", {
-      entry: updated!,
-      toRevision: input.toRevision,
-      author,
-    });
+    await recordEvent(
+      tx,
+      "entry.reverted",
+      { entry: updated!, toRevision: input.toRevision },
+      tenantId,
+    );
     return updated!;
   });
-
-  return updated;
 }
 
 // ---------------------------------------------------------------------------
@@ -556,7 +579,6 @@ async function requestPublish(
   entry: typeof contentEntries.$inferSelect,
   author: Author,
 ) {
-  // Don't stack duplicate requests — reuse an open one if it exists.
   const [existing] = await db
     .select()
     .from(reviewRequests)
@@ -597,6 +619,7 @@ async function requestPublish(
     const [review] = await tx
       .insert(reviewRequests)
       .values({
+        tenantId: entry.tenantId,
         entryId: entry.id,
         revision: nextRevision,
         requestedByType: author.type,
@@ -605,11 +628,12 @@ async function requestPublish(
       })
       .returning();
 
-    await recordEvent(tx, "entry.review_requested", {
-      entry: updated!,
-      review: review!,
-      author,
-    });
+    await recordEvent(
+      tx,
+      "entry.review_requested",
+      { entry: updated!, review: review! },
+      entry.tenantId,
+    );
     return { entry: updated!, review: review! };
   });
 
@@ -621,33 +645,37 @@ async function requestPublish(
 }
 
 export async function listReviews(
-  input: { status?: "pending" | "approved" | "rejected" } = {},
+  input: { status?: "pending" | "approved" | "rejected"; tenantId?: string } = {},
 ) {
-  const base = db.select().from(reviewRequests);
-  return input.status
-    ? base
-        .where(eq(reviewRequests.status, input.status))
-        .orderBy(desc(reviewRequests.createdAt))
-    : base.orderBy(desc(reviewRequests.createdAt));
+  const tenantId = tid(input);
+  const conds = [eq(reviewRequests.tenantId, tenantId)];
+  if (input.status) conds.push(eq(reviewRequests.status, input.status));
+  return db
+    .select()
+    .from(reviewRequests)
+    .where(and(...conds))
+    .orderBy(desc(reviewRequests.createdAt));
 }
 
 export async function approveReview(input: {
   requestId: string;
   author?: Partial<Author>;
   note?: string;
+  tenantId?: string;
 }) {
   const author = defaultAuthor({ type: "human", ...input.author });
+  const tenantId = tid(input);
   if (!mayDecideReview(author.type)) {
     throw new ValidationError([
       "agents cannot approve reviews; a human or system principal is required",
     ]);
   }
 
-  const result = await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const [review] = await tx
       .select()
       .from(reviewRequests)
-      .where(eq(reviewRequests.id, input.requestId));
+      .where(and(eq(reviewRequests.id, input.requestId), eq(reviewRequests.tenantId, tenantId)));
     if (!review) throw new NotFoundError(`review "${input.requestId}" not found`);
     if (review.status !== "pending") {
       throw new ValidationError([`review is already ${review.status}`]);
@@ -689,35 +717,31 @@ export async function approveReview(input: {
       .where(eq(reviewRequests.id, review.id))
       .returning();
 
-    await recordEvent(tx, "entry.published", { entry: updated!, author });
-    await recordEvent(tx, "review.approved", {
-      review: decided!,
-      entry: updated!,
-      author,
-    });
+    await recordEvent(tx, "entry.published", { entry: updated! }, tenantId);
+    await recordEvent(tx, "review.approved", { review: decided!, entry: updated! }, tenantId);
     return { entry: updated!, review: decided! };
   });
-
-  return result;
 }
 
 export async function rejectReview(input: {
   requestId: string;
   author?: Partial<Author>;
   note?: string;
+  tenantId?: string;
 }) {
   const author = defaultAuthor({ type: "human", ...input.author });
+  const tenantId = tid(input);
   if (!mayDecideReview(author.type)) {
     throw new ValidationError([
       "agents cannot reject reviews; a human or system principal is required",
     ]);
   }
 
-  const result = await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const [review] = await tx
       .select()
       .from(reviewRequests)
-      .where(eq(reviewRequests.id, input.requestId));
+      .where(and(eq(reviewRequests.id, input.requestId), eq(reviewRequests.tenantId, tenantId)));
     if (!review) throw new NotFoundError(`review "${input.requestId}" not found`);
     if (review.status !== "pending") {
       throw new ValidationError([`review is already ${review.status}`]);
@@ -759,13 +783,7 @@ export async function rejectReview(input: {
       .where(eq(reviewRequests.id, review.id))
       .returning();
 
-    await recordEvent(tx, "review.rejected", {
-      review: decided!,
-      entry: updated!,
-      author,
-    });
+    await recordEvent(tx, "review.rejected", { review: decided!, entry: updated! }, tenantId);
     return { entry: updated!, review: decided! };
   });
-
-  return result;
 }

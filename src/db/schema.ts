@@ -34,6 +34,31 @@ export const reviewStatus = pgEnum("review_status", [
 ]);
 
 /**
+ * The built-in default tenant. Every tenant-scoped row defaults to this, so
+ * single-tenant installs (and pre-multi-tenant data) keep working unchanged.
+ */
+export const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+export const DEFAULT_TENANT_SLUG = "default";
+
+/**
+ * A tenant is an isolated workspace. All content, assets, webhooks, and API keys
+ * belong to exactly one tenant; queries are always scoped by it.
+ */
+export const tenants = pgTable("tenants", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Reusable tenant_id column: NOT NULL, defaults to the built-in tenant. */
+const tenantId = () =>
+  uuid("tenant_id")
+    .notNull()
+    .default(DEFAULT_TENANT_ID)
+    .references(() => tenants.id, { onDelete: "cascade" });
+
+/**
  * A content type is a self-describing schema. Agents read this to learn what
  * shapes of content exist and what fields each one has, then operate on entries
  * without any out-of-band knowledge.
@@ -41,19 +66,27 @@ export const reviewStatus = pgEnum("review_status", [
  * `fields` is an array of field definitions — see src/core/validation.ts for the
  * supported field types and their validation rules.
  */
-export const contentTypes = pgTable("content_types", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  // Machine name, e.g. "blog_post". Stable identifier used by agents.
-  name: text("name").notNull().unique(),
-  displayName: text("display_name").notNull(),
-  description: text("description"),
-  fields: jsonb("fields").$type<FieldDef[]>().notNull().default([]),
-  // When true, an *agent* cannot publish entries of this type directly — a
-  // publish request is queued for a human to approve. Humans bypass the gate.
-  requireApproval: boolean("require_approval").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const contentTypes = pgTable(
+  "content_types",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    // Machine name, e.g. "blog_post". Stable identifier used by agents.
+    name: text("name").notNull(),
+    displayName: text("display_name").notNull(),
+    description: text("description"),
+    fields: jsonb("fields").$type<FieldDef[]>().notNull().default([]),
+    // When true, an *agent* cannot publish entries of this type directly — a
+    // publish request is queued for a human to approve. Humans bypass the gate.
+    requireApproval: boolean("require_approval").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // Type names are unique within a tenant.
+    namePerTenant: unique("content_types_name_per_tenant").on(t.tenantId, t.name),
+  }),
+);
 
 /**
  * A content entry is one record of a given type. `data` holds the field values,
@@ -64,6 +97,7 @@ export const contentEntries = pgTable(
   "content_entries",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: tenantId(),
     typeId: uuid("type_id")
       .notNull()
       .references(() => contentTypes.id, { onDelete: "cascade" }),
@@ -122,6 +156,7 @@ export const contentRevisions = pgTable(
  */
 export const reviewRequests = pgTable("review_requests", {
   id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: tenantId(),
   entryId: uuid("entry_id")
     .notNull()
     .references(() => contentEntries.id, { onDelete: "cascade" }),
@@ -151,6 +186,7 @@ export const reviewRequests = pgTable("review_requests", {
  */
 export const webhooks = pgTable("webhooks", {
   id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: tenantId(),
   name: text("name").notNull(),
   url: text("url").notNull(),
   events: text("events")
@@ -171,6 +207,7 @@ export const webhooks = pgTable("webhooks", {
  */
 export const webhookDeliveries = pgTable("webhook_deliveries", {
   id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: tenantId(),
   webhookId: uuid("webhook_id")
     .notNull()
     .references(() => webhooks.id, { onDelete: "cascade" }),
@@ -200,6 +237,7 @@ export const webhookDeliveries = pgTable("webhook_deliveries", {
  */
 export const eventOutbox = pgTable("event_outbox", {
   id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: tenantId(),
   event: text("event").notNull(),
   data: jsonb("data").$type<Record<string, unknown>>().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -216,6 +254,7 @@ export const eventOutbox = pgTable("event_outbox", {
  */
 export const apiKeys = pgTable("api_keys", {
   id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: tenantId(),
   name: text("name").notNull(),
   // First chars of the raw key, for identifying it in listings without storing it.
   keyPrefix: text("key_prefix").notNull(),
@@ -236,6 +275,7 @@ export const apiKeys = pgTable("api_keys", {
  */
 export const assets = pgTable("assets", {
   id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: tenantId(),
   filename: text("filename").notNull(),
   contentType: text("content_type").notNull(),
   size: integer("size").notNull(),

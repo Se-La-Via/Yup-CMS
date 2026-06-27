@@ -16,6 +16,7 @@ import * as auth from "./auth.js";
 
 export interface GraphQLContext {
   key: auth.ApiKeyRecord | null;
+  tenantId: string;
 }
 
 function requireReadAll(ctx: GraphQLContext) {
@@ -54,9 +55,10 @@ function mapEntry(row: Row, typeName: string) {
 }
 
 const root = {
-  contentTypes: () => content.listContentTypes(),
-  contentType: ({ name }: { name: string }) =>
-    content.getContentType(name).catch(() => null),
+  contentTypes: (_args: unknown, ctx: GraphQLContext) =>
+    content.listContentTypes(ctx.tenantId),
+  contentType: ({ name }: { name: string }, ctx: GraphQLContext) =>
+    content.getContentType(name, ctx.tenantId).catch(() => null),
 
   entries: async (
     args: { type: string; status?: string; limit?: number; offset?: number },
@@ -68,6 +70,7 @@ const root = {
       status: (args.status as read.Status) ?? "published",
       limit: args.limit,
       offset: args.offset,
+      tenantId: ctx.tenantId,
     });
     return rows.map((r) => mapEntry(r, args.type));
   },
@@ -75,7 +78,7 @@ const root = {
   entry: async ({ id }: { id: string }, ctx: GraphQLContext) => {
     // A by-id lookup can return any status, so it is always privileged.
     requireReadAll(ctx);
-    const e = await read.getById({ id }).catch(() => null);
+    const e = await read.getById({ id, tenantId: ctx.tenantId }).catch(() => null);
     if (!e) return null;
     return mapEntry(e, await typeNameOf(e.typeId));
   },
@@ -90,12 +93,14 @@ const root = {
         type: args.type,
         slug: args.slug,
         status: (args.status as read.Status) ?? "published",
+        tenantId: ctx.tenantId,
       })
       .catch(() => null);
     return e ? mapEntry(e, args.type) : null;
   },
 
-  assets: ({ limit }: { limit?: number }) => assets.listAssets(limit ?? 50),
+  assets: ({ limit }: { limit?: number }, ctx: GraphQLContext) =>
+    assets.listAssets(ctx.tenantId, limit ?? 50),
 };
 
 export async function executeGraphQL(

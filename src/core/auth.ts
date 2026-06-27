@@ -1,7 +1,7 @@
 import { randomBytes, createHash } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { apiKeys } from "../db/schema.js";
+import { apiKeys, DEFAULT_TENANT_ID } from "../db/schema.js";
 
 /**
  * API-key authentication for the read API.
@@ -26,7 +26,11 @@ function stripHash(rec: ApiKeyRecord): PublicApiKey {
   return rest;
 }
 
-export async function createApiKey(input: { name: string; scopes?: string[] }) {
+export async function createApiKey(input: {
+  name: string;
+  scopes?: string[];
+  tenantId?: string;
+}) {
   const scopes = input.scopes ?? ["read:published"];
   const invalid = scopes.filter((s) => !SCOPES.includes(s as Scope));
   if (invalid.length > 0) {
@@ -39,6 +43,7 @@ export async function createApiKey(input: { name: string; scopes?: string[] }) {
   const [rec] = await db
     .insert(apiKeys)
     .values({
+      tenantId: input.tenantId ?? DEFAULT_TENANT_ID,
       name: input.name,
       keyPrefix: raw.slice(0, 16),
       keyHash: hashKey(raw),
@@ -53,16 +58,25 @@ export async function createApiKey(input: { name: string; scopes?: string[] }) {
   };
 }
 
-export async function listApiKeys(): Promise<PublicApiKey[]> {
-  const rows = await db.select().from(apiKeys).orderBy(apiKeys.createdAt);
+export async function listApiKeys(
+  tenantId: string = DEFAULT_TENANT_ID,
+): Promise<PublicApiKey[]> {
+  const rows = await db
+    .select()
+    .from(apiKeys)
+    .where(eq(apiKeys.tenantId, tenantId))
+    .orderBy(apiKeys.createdAt);
   return rows.map(stripHash);
 }
 
-export async function revokeApiKey(id: string): Promise<PublicApiKey> {
+export async function revokeApiKey(
+  id: string,
+  tenantId: string = DEFAULT_TENANT_ID,
+): Promise<PublicApiKey> {
   const [rec] = await db
     .update(apiKeys)
     .set({ active: false })
-    .where(eq(apiKeys.id, id))
+    .where(and(eq(apiKeys.id, id), eq(apiKeys.tenantId, tenantId)))
     .returning();
   if (!rec) throw new Error(`api key "${id}" not found`);
   return stripHash(rec);

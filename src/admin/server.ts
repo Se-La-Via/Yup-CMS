@@ -72,6 +72,7 @@ export function createAdminServer() {
       return json(res, 403, { error: "key lacks the 'admin' scope" });
     }
     const principal = { type: "human" as const, id: key.name };
+    const tenantId = key.tenantId;
 
     if (seg[0] !== "api") return json(res, 404, { error: "not found" });
     const path = seg.slice(1);
@@ -79,7 +80,7 @@ export function createAdminServer() {
     try {
       // --- reads ---
       if (method === "GET" && path[0] === "types") {
-        return json(res, 200, await content.listContentTypes());
+        return json(res, 200, await content.listContentTypes(tenantId));
       }
       if (method === "GET" && path[0] === "entries" && path.length === 1) {
         const type = q.get("type");
@@ -91,13 +92,14 @@ export function createAdminServer() {
             type,
             status: (q.get("status") as never) ?? undefined,
             limit: 200,
+            tenantId,
           }),
         );
       }
       if (method === "GET" && path[0] === "entries" && path.length === 2) {
-        const entry = await content.getEntry(path[1]!);
+        const entry = await content.getEntry(path[1]!, tenantId);
         const history = q.get("history") === "1"
-          ? await content.getEntryHistory(path[1]!)
+          ? await content.getEntryHistory(path[1]!, tenantId)
           : undefined;
         return json(res, 200, { entry, history });
       }
@@ -105,21 +107,21 @@ export function createAdminServer() {
         return json(
           res,
           200,
-          await content.listReviews({ status: (q.get("status") as never) ?? undefined }),
+          await content.listReviews({ status: (q.get("status") as never) ?? undefined, tenantId }),
         );
       }
       if (method === "GET" && path[0] === "webhooks") {
-        return json(res, 200, await events.listWebhooks());
+        return json(res, 200, await events.listWebhooks(tenantId));
       }
       if (method === "GET" && path[0] === "deliveries") {
         return json(
           res,
           200,
-          await events.getDeliveries({ webhookId: q.get("webhookId") ?? undefined, limit: 100 }),
+          await events.getDeliveries({ webhookId: q.get("webhookId") ?? undefined, limit: 100, tenantId }),
         );
       }
       if (method === "GET" && path[0] === "assets") {
-        return json(res, 200, await assets.listAssets(200));
+        return json(res, 200, await assets.listAssets(tenantId, 200));
       }
 
       // --- actions ---
@@ -132,6 +134,7 @@ export function createAdminServer() {
             requestId: path[1]!,
             author: principal,
             note: body.note as string | undefined,
+            tenantId,
           }),
         );
       }
@@ -144,6 +147,7 @@ export function createAdminServer() {
             requestId: path[1]!,
             author: principal,
             note: body.note as string | undefined,
+            tenantId,
           }),
         );
       }
@@ -156,11 +160,12 @@ export function createAdminServer() {
             id: path[1]!,
             status: body.status as never,
             author: principal,
+            tenantId,
           }),
         );
       }
       if (method === "DELETE" && path[0] === "entries" && path.length === 2) {
-        return json(res, 200, await content.deleteEntry({ id: path[1]!, author: principal }));
+        return json(res, 200, await content.deleteEntry({ id: path[1]!, author: principal, tenantId }));
       }
 
       return json(res, 404, { error: "not found", path: url.pathname });

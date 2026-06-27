@@ -7,6 +7,7 @@ import "dotenv/config";
 import assert from "node:assert/strict";
 import { createContentType, createEntry, setEntryStatus } from "../core/content.js";
 import { executeGraphQL } from "../core/graphql.js";
+import { DEFAULT_TENANT_ID } from "../db/schema.js";
 
 async function main() {
   try {
@@ -31,7 +32,7 @@ async function main() {
   const ok = await executeGraphQL(
     `{ entries(type: "gql_post", status: "published", limit: 100) { id status data } }`,
     undefined,
-    { key: null },
+    { key: null, tenantId: DEFAULT_TENANT_ID },
   );
   assert.ok(!ok.errors, `unexpected errors: ${JSON.stringify(ok.errors)}`);
   const rows = (ok.data as { entries: Array<{ id: string }> }).entries;
@@ -41,7 +42,7 @@ async function main() {
   const denied = await executeGraphQL(
     `{ entries(type: "gql_post", status: "draft") { id } }`,
     undefined,
-    { key: null },
+    { key: null, tenantId: DEFAULT_TENANT_ID },
   );
   assert.ok(denied.errors && denied.errors.length > 0, "draft query without key should error");
 

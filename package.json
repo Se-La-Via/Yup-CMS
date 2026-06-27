@@ -28,6 +28,7 @@
     "smoke:unique": "tsx src/scripts/smoke-unique.ts",
     "smoke:graphql": "tsx src/scripts/smoke-graphql.ts",
     "smoke:schedule": "tsx src/scripts/smoke-schedule.ts",
+    "smoke:tenant": "tsx src/scripts/smoke-tenant.ts",
     "smoke:ratelimit-redis": "tsx src/scripts/smoke-ratelimit-redis.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",

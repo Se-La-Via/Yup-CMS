@@ -6,6 +6,7 @@ import * as auth from "../core/auth.js";
 import * as assets from "../core/assets.js";
 import { createLimiterFromEnv } from "../core/ratelimit.js";
 import { executeGraphQL } from "../core/graphql.js";
+import * as tenant from "../core/tenant.js";
 import { NotFoundError, ValidationError } from "../core/content.js";
 
 /**
@@ -70,6 +71,20 @@ async function rateLimited(req: IncomingMessage): Promise<{ retryAfter: number }
   return r.allowed ? null : { retryAfter: Math.ceil(r.retryAfterMs / 1000) };
 }
 
+/**
+ * Which tenant this request reads from: the API key's tenant if authenticated,
+ * else an explicit X-Tenant slug, else the default tenant.
+ */
+async function tenantFor(
+  key: { tenantId: string } | null,
+  req: IncomingMessage,
+): Promise<string> {
+  if (key) return key.tenantId;
+  const slug = req.headers["x-tenant"] as string | undefined;
+  if (slug) return tenant.resolveTenantId(slug);
+  return tenant.DEFAULT_TENANT_ID;
+}
+
 function num(v: string | null): number | undefined {
   if (v === null) return undefined;
   const n = Number(v);
@@ -107,6 +122,7 @@ const server = createServer(async (req, res) => {
       ? authz.slice(7)
       : (req.headers["x-api-key"] as string | undefined);
     const key = await auth.verifyKey(token);
+    const tenantId = await tenantFor(key, req);
     const body = await readBody(req);
     if (typeof body.query !== "string") {
       return send(res, 400, { errors: [{ message: "missing 'query' string" }] });
@@ -114,7 +130,7 @@ const server = createServer(async (req, res) => {
     const result = await executeGraphQL(
       body.query,
       body.variables as Record<string, unknown> | undefined,
-      { key },
+      { key, tenantId },
     );
     return send(res, 200, result);
   }
@@ -182,23 +198,25 @@ const server = createServer(async (req, res) => {
       }
     }
 
+    const tenantId = await tenantFor(key, req);
+
     // /types and /types/:name
     if (seg[0] === "types") {
-      if (seg.length === 1) return send(res, 200, await content.listContentTypes());
-      if (seg.length === 2) return send(res, 200, await content.getContentType(seg[1]!));
+      if (seg.length === 1) return send(res, 200, await content.listContentTypes(tenantId));
+      if (seg.length === 2) return send(res, 200, await content.getContentType(seg[1]!, tenantId));
     }
 
     // /entries/:id
     if (seg[0] === "entries" && seg.length === 2) {
-      return send(res, 200, await read.getById({ id: seg[1]!, resolve }));
+      return send(res, 200, await read.getById({ id: seg[1]!, resolve, tenantId }));
     }
 
     // /assets — list metadata; /assets/:id — stream the bytes
     if (seg[0] === "assets" && seg.length === 1) {
-      return send(res, 200, await assets.listAssets());
+      return send(res, 200, await assets.listAssets(tenantId));
     }
     if (seg[0] === "assets" && seg.length === 2) {
-      const { meta, bytes } = await assets.getAssetBytes(seg[1]!);
+      const { meta, bytes } = await assets.getAssetBytes(seg[1]!, tenantId);
       res.writeHead(200, {
         "content-type": meta.contentType,
         "content-length": String(bytes.length),
@@ -221,6 +239,7 @@ const server = createServer(async (req, res) => {
           limit: num(q.get("limit")),
           offset: num(q.get("offset")),
           resolve,
+          tenantId,
         }),
       );
     }
@@ -228,7 +247,7 @@ const server = createServer(async (req, res) => {
       return send(
         res,
         200,
-        await read.getBySlug({ type: seg[1]!, slug: seg[2]!, status, resolve }),
+        await read.getBySlug({ type: seg[1]!, slug: seg[2]!, status, resolve, tenantId }),
       );
     }
 

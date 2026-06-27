@@ -1,14 +1,17 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { contentTypes, contentEntries, type FieldDef } from "../db/schema.js";
+import {
+  contentTypes,
+  contentEntries,
+  DEFAULT_TENANT_ID,
+  type FieldDef,
+} from "../db/schema.js";
 import { getContentType, getEntry, NotFoundError } from "./content.js";
 
 /**
  * Public read layer for front-ends. Defaults to published content and can
- * expand `reference` fields into the referenced (published) entry.
- *
- * This is the outward-facing surface — the read side of the CMS that a website
- * or app consumes, as opposed to the MCP tools that agents write through.
+ * expand `reference` fields into the referenced (published) entry. Everything
+ * is scoped to a tenant.
  */
 
 export type Status =
@@ -25,9 +28,12 @@ export async function list(input: {
   limit?: number;
   offset?: number;
   resolve?: boolean;
+  tenantId?: string;
 }) {
-  const type = await getContentType(input.type);
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const type = await getContentType(input.type, tenantId);
   const conditions = [
+    eq(contentEntries.tenantId, tenantId),
     eq(contentEntries.typeId, type.id),
     eq(contentEntries.status, input.status ?? "published"),
   ];
@@ -43,7 +49,10 @@ export async function list(input: {
 
   if (!input.resolve) return rows;
   return Promise.all(
-    rows.map(async (r) => ({ ...r, data: await resolveRefs(type.fields, r.data) })),
+    rows.map(async (r) => ({
+      ...r,
+      data: await resolveRefs(type.fields, r.data, tenantId),
+    })),
   );
 }
 
@@ -52,6 +61,7 @@ export async function getBySlug(input: {
   slug: string;
   status?: Status;
   resolve?: boolean;
+  tenantId?: string;
 }) {
   const [entry] = await list({ ...input, slug: input.slug, limit: 1 });
   if (!entry) {
@@ -62,8 +72,13 @@ export async function getBySlug(input: {
   return entry;
 }
 
-export async function getById(input: { id: string; resolve?: boolean }) {
-  const entry = await getEntry(input.id);
+export async function getById(input: {
+  id: string;
+  resolve?: boolean;
+  tenantId?: string;
+}) {
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const entry = await getEntry(input.id, tenantId);
   if (!input.resolve) return entry;
 
   const [type] = await db
@@ -71,17 +86,18 @@ export async function getById(input: { id: string; resolve?: boolean }) {
     .from(contentTypes)
     .where(eq(contentTypes.id, entry.typeId));
   if (!type) return entry;
-  return { ...entry, data: await resolveRefs(type.fields, entry.data) };
+  return { ...entry, data: await resolveRefs(type.fields, entry.data, tenantId) };
 }
 
 /**
  * Replace each `reference` field's stored id with the referenced entry
- * (id, type, data) — but only if that entry is published. Unresolvable or
- * unpublished references become null. One level deep; no cycle expansion.
+ * (id, type, data) — but only if that entry is published and in the same tenant.
+ * Unresolvable references become null. One level deep; no cycle expansion.
  */
 async function resolveRefs(
   fields: FieldDef[],
   data: Record<string, unknown>,
+  tenantId: string,
 ): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = { ...data };
   for (const f of fields) {
@@ -92,7 +108,13 @@ async function resolveRefs(
     const [ref] = await db
       .select()
       .from(contentEntries)
-      .where(and(eq(contentEntries.id, id), eq(contentEntries.status, "published")));
+      .where(
+        and(
+          eq(contentEntries.id, id),
+          eq(contentEntries.tenantId, tenantId),
+          eq(contentEntries.status, "published"),
+        ),
+      );
     out[f.name] = ref ? { id: ref.id, type: f.refType, data: ref.data } : null;
   }
   return out;

@@ -1,7 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { assets } from "../db/schema.js";
+import { assets, DEFAULT_TENANT_ID } from "../db/schema.js";
 import { getStorage } from "./storage.js";
 import { NotFoundError } from "./content.js";
 
@@ -16,6 +16,7 @@ export async function createAsset(input: {
   contentType?: string;
   dataBase64?: string;
   sourceUrl?: string;
+  tenantId?: string;
 }) {
   let bytes: Buffer;
   let contentType = input.contentType;
@@ -48,6 +49,7 @@ export async function createAsset(input: {
       .insert(assets)
       .values({
         id,
+        tenantId: input.tenantId ?? DEFAULT_TENANT_ID,
         filename: input.filename,
         contentType: contentType || "application/octet-stream",
         size: bytes.length,
@@ -63,25 +65,33 @@ export async function createAsset(input: {
   }
 }
 
-export async function listAssets(limit = 50) {
-  return db.select().from(assets).orderBy(desc(assets.createdAt)).limit(limit);
+export async function listAssets(tenantId: string = DEFAULT_TENANT_ID, limit = 50) {
+  return db
+    .select()
+    .from(assets)
+    .where(eq(assets.tenantId, tenantId))
+    .orderBy(desc(assets.createdAt))
+    .limit(limit);
 }
 
-export async function getAsset(id: string) {
-  const [row] = await db.select().from(assets).where(eq(assets.id, id));
+export async function getAsset(id: string, tenantId: string = DEFAULT_TENANT_ID) {
+  const [row] = await db
+    .select()
+    .from(assets)
+    .where(and(eq(assets.id, id), eq(assets.tenantId, tenantId)));
   if (!row) throw new NotFoundError(`asset "${id}" not found`);
   return row;
 }
 
-export async function getAssetBytes(id: string) {
-  const meta = await getAsset(id);
+export async function getAssetBytes(id: string, tenantId: string = DEFAULT_TENANT_ID) {
+  const meta = await getAsset(id, tenantId);
   const bytes = await getStorage().get(meta.storageKey);
   if (!bytes) throw new NotFoundError(`asset "${id}" data is missing from storage`);
   return { meta, bytes };
 }
 
-export async function deleteAsset(id: string) {
-  const meta = await getAsset(id);
+export async function deleteAsset(id: string, tenantId: string = DEFAULT_TENANT_ID) {
+  const meta = await getAsset(id, tenantId);
   await db.delete(assets).where(eq(assets.id, id));
   await getStorage().delete(meta.storageKey).catch(() => {});
   return { deleted: true, id };

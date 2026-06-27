@@ -7,6 +7,7 @@ import { ValidationError, NotFoundError } from "../core/content.js";
 import * as events from "../core/events.js";
 import * as auth from "../core/auth.js";
 import * as assets from "../core/assets.js";
+import * as tenant from "../core/tenant.js";
 
 const server = new McpServer({
   name: "yup-cms",
@@ -75,6 +76,11 @@ const PRINCIPAL_TYPE: "human" | "agent" | "system" = (() => {
 })();
 const PRINCIPAL_ID = process.env.CMS_PRINCIPAL_ID ?? "mcp-agent";
 
+// This connection's tenant — resolved from CMS_TENANT at boot. Every core call
+// is scoped to it, so an MCP connection can only ever touch its own tenant.
+const TENANT_SLUG = process.env.CMS_TENANT ?? tenant.DEFAULT_TENANT_SLUG;
+let TENANT_ID = tenant.DEFAULT_TENANT_ID;
+
 function principalAuthor(note?: string) {
   return { type: PRINCIPAL_TYPE, id: PRINCIPAL_ID, note };
 }
@@ -94,7 +100,7 @@ server.registerTool(
       "List all content types (schemas) defined in the CMS. Call this first to discover what kinds of content exist.",
     inputSchema: {},
   },
-  tool(async () => content.listContentTypes()),
+  tool(async () => content.listContentTypes(TENANT_ID)),
 );
 
 server.registerTool(
@@ -104,7 +110,7 @@ server.registerTool(
     description: "Get one content type by its machine name, including its full field schema.",
     inputSchema: { name: z.string() },
   },
-  tool(async ({ name }) => content.getContentType(name)),
+  tool(async ({ name }) => content.getContentType(name, TENANT_ID)),
 );
 
 server.registerTool(
@@ -124,7 +130,7 @@ server.registerTool(
         .describe("if true, an agent's publish is held for human approval (review gate)"),
     },
   },
-  tool(async (args) => content.createContentType(args)),
+  tool(async (args) => content.createContentType({ ...args, tenantId: TENANT_ID })),
 );
 
 // --- Entries ---------------------------------------------------------------
@@ -143,7 +149,7 @@ server.registerTool(
       offset: z.number().int().nonnegative().optional(),
     },
   },
-  tool(async (args) => content.listEntries(args)),
+  tool(async (args) => content.listEntries({ ...args, tenantId: TENANT_ID })),
 );
 
 server.registerTool(
@@ -153,7 +159,7 @@ server.registerTool(
     description: "Get a single entry by its id, including current data and status.",
     inputSchema: { id: z.string() },
   },
-  tool(async ({ id }) => content.getEntry(id)),
+  tool(async ({ id }) => content.getEntry(id, TENANT_ID)),
 );
 
 server.registerTool(
@@ -171,7 +177,7 @@ server.registerTool(
     },
   },
   tool(async ({ note, ...args }) =>
-    content.createEntry({ ...args, author: principalAuthor(note) }),
+    content.createEntry({ ...args, author: principalAuthor(note), tenantId: TENANT_ID }),
   ),
 );
 
@@ -188,7 +194,7 @@ server.registerTool(
     },
   },
   tool(async ({ note, ...args }) =>
-    content.updateEntry({ ...args, author: principalAuthor(note) }),
+    content.updateEntry({ ...args, author: principalAuthor(note), tenantId: TENANT_ID }),
   ),
 );
 
@@ -205,7 +211,7 @@ server.registerTool(
     },
   },
   tool(async ({ note, ...args }) =>
-    content.setEntryStatus({ ...args, author: principalAuthor(note) }),
+    content.setEntryStatus({ ...args, author: principalAuthor(note), tenantId: TENANT_ID }),
   ),
 );
 
@@ -217,7 +223,7 @@ server.registerTool(
       "Get the full revision history of an entry — every change, who made it (human/agent), and why.",
     inputSchema: { id: z.string() },
   },
-  tool(async ({ id }) => content.getEntryHistory(id)),
+  tool(async ({ id }) => content.getEntryHistory(id, TENANT_ID)),
 );
 
 server.registerTool(
@@ -233,7 +239,7 @@ server.registerTool(
     },
   },
   tool(async ({ note, ...args }) =>
-    content.revertEntry({ ...args, author: principalAuthor(note) }),
+    content.revertEntry({ ...args, author: principalAuthor(note), tenantId: TENANT_ID }),
   ),
 );
 
@@ -250,7 +256,7 @@ server.registerTool(
     },
   },
   tool(async ({ note, ...args }) =>
-    content.schedulePublish({ ...args, author: principalAuthor(note) }),
+    content.schedulePublish({ ...args, author: principalAuthor(note), tenantId: TENANT_ID }),
   ),
 );
 
@@ -262,7 +268,7 @@ server.registerTool(
     inputSchema: { id: z.string(), note: noteSchema },
   },
   tool(async ({ note, ...args }) =>
-    content.cancelSchedule({ ...args, author: principalAuthor(note) }),
+    content.cancelSchedule({ ...args, author: principalAuthor(note), tenantId: TENANT_ID }),
   ),
 );
 
@@ -278,7 +284,7 @@ server.registerTool(
     },
   },
   tool(async ({ note, ...args }) =>
-    content.deleteEntry({ ...args, author: principalAuthor(note) }),
+    content.deleteEntry({ ...args, author: principalAuthor(note), tenantId: TENANT_ID }),
   ),
 );
 
@@ -294,7 +300,7 @@ server.registerTool(
       status: z.enum(["pending", "approved", "rejected"]).optional(),
     },
   },
-  tool(async (args) => content.listReviews(args)),
+  tool(async (args) => content.listReviews({ ...args, tenantId: TENANT_ID })),
 );
 
 server.registerTool(
@@ -309,7 +315,7 @@ server.registerTool(
     },
   },
   tool(async ({ requestId, note }) =>
-    content.approveReview({ requestId, note, author: principalAuthor(note) }),
+    content.approveReview({ requestId, note, author: principalAuthor(note), tenantId: TENANT_ID }),
   ),
 );
 
@@ -325,7 +331,7 @@ server.registerTool(
     },
   },
   tool(async ({ requestId, note }) =>
-    content.rejectReview({ requestId, note, author: principalAuthor(note) }),
+    content.rejectReview({ requestId, note, author: principalAuthor(note), tenantId: TENANT_ID }),
   ),
 );
 
@@ -351,7 +357,7 @@ server.registerTool(
         .describe("shared secret; deliveries are signed with HMAC-SHA256 in X-Yup-Signature"),
     },
   },
-  tool(async (args) => events.registerWebhook(args)),
+  tool(async (args) => events.registerWebhook({ ...args, tenantId: TENANT_ID })),
 );
 
 server.registerTool(
@@ -361,7 +367,7 @@ server.registerTool(
     description: "List all registered webhook subscriptions.",
     inputSchema: {},
   },
-  tool(async () => events.listWebhooks()),
+  tool(async () => events.listWebhooks(TENANT_ID)),
 );
 
 server.registerTool(
@@ -371,7 +377,7 @@ server.registerTool(
     description: "Remove a webhook subscription by id.",
     inputSchema: { id: z.string() },
   },
-  tool(async ({ id }) => events.deleteWebhook(id)),
+  tool(async ({ id }) => events.deleteWebhook(id, TENANT_ID)),
 );
 
 server.registerTool(
@@ -385,7 +391,7 @@ server.registerTool(
       limit: z.number().int().positive().max(200).optional(),
     },
   },
-  tool(async (args) => events.getDeliveries(args)),
+  tool(async (args) => events.getDeliveries({ ...args, tenantId: TENANT_ID })),
 );
 
 // --- Assets / media --------------------------------------------------------
@@ -403,7 +409,7 @@ server.registerTool(
       sourceUrl: z.string().optional().describe("http(s) URL to fetch the asset from"),
     },
   },
-  tool(async (args) => assets.createAsset(args)),
+  tool(async (args) => assets.createAsset({ ...args, tenantId: TENANT_ID })),
 );
 
 server.registerTool(
@@ -413,7 +419,7 @@ server.registerTool(
     description: "List uploaded asset metadata, newest first.",
     inputSchema: {},
   },
-  tool(async () => assets.listAssets()),
+  tool(async () => assets.listAssets(TENANT_ID)),
 );
 
 server.registerTool(
@@ -423,7 +429,7 @@ server.registerTool(
     description: "Get one asset's metadata by id.",
     inputSchema: { id: z.string() },
   },
-  tool(async ({ id }) => assets.getAsset(id)),
+  tool(async ({ id }) => assets.getAsset(id, TENANT_ID)),
 );
 
 server.registerTool(
@@ -433,7 +439,7 @@ server.registerTool(
     description: "Delete an asset's metadata and its stored bytes.",
     inputSchema: { id: z.string() },
   },
-  tool(async ({ id }) => assets.deleteAsset(id)),
+  tool(async ({ id }) => assets.deleteAsset(id, TENANT_ID)),
 );
 
 // --- API keys (read-API auth) ----------------------------------------------
@@ -450,7 +456,7 @@ server.registerTool(
       scopes: z.array(z.enum(auth.SCOPES)).optional(),
     },
   },
-  tool(async (args) => auth.createApiKey(args)),
+  tool(async (args) => auth.createApiKey({ ...args, tenantId: TENANT_ID })),
 );
 
 server.registerTool(
@@ -460,7 +466,7 @@ server.registerTool(
     description: "List API keys (prefixes and scopes only — never the raw key or its hash).",
     inputSchema: {},
   },
-  tool(async () => auth.listApiKeys()),
+  tool(async () => auth.listApiKeys(TENANT_ID)),
 );
 
 server.registerTool(
@@ -470,17 +476,46 @@ server.registerTool(
     description: "Deactivate an API key by id. Takes effect immediately.",
     inputSchema: { id: z.string() },
   },
-  tool(async ({ id }) => auth.revokeApiKey(id)),
+  tool(async ({ id }) => auth.revokeApiKey(id, TENANT_ID)),
+);
+
+// --- Tenants (workspaces) --------------------------------------------------
+
+server.registerTool(
+  "list_tenants",
+  {
+    title: "List tenants",
+    description: "List all tenants (workspaces).",
+    inputSchema: {},
+  },
+  tool(async () => tenant.listTenants()),
+);
+
+server.registerTool(
+  "create_tenant",
+  {
+    title: "Create tenant",
+    description:
+      "Create a new tenant (isolated workspace). Point a separate MCP connection at it with CMS_TENANT=<slug>.",
+    inputSchema: {
+      slug: z.string().describe("kebab-case identifier, e.g. acme"),
+      name: z.string(),
+    },
+  },
+  tool(async (args) => tenant.createTenant(args)),
 );
 
 // --- Boot ------------------------------------------------------------------
 
 async function main() {
+  // Resolve this connection's tenant before serving any request.
+  TENANT_ID = await tenant.resolveTenantId(TENANT_SLUG);
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // stderr so it never corrupts the stdio JSON-RPC stream.
   console.error(
-    `Yup CMS MCP server running on stdio (principal: ${PRINCIPAL_TYPE}:${PRINCIPAL_ID})`,
+    `Yup CMS MCP server running on stdio (principal: ${PRINCIPAL_TYPE}:${PRINCIPAL_ID}, tenant: ${TENANT_SLUG})`,
   );
 }
 
